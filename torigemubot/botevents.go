@@ -1,17 +1,17 @@
 package main
 
 import (
-	"github.com/go-telegram-bot-api/telegram-bot-api"
+	tg "github.com/go-telegram-bot-api/telegram-bot-api"
 	"log"
 )
 
-type botUpdateEvent func(bot *tgbotapi.BotAPI, msg *tgbotapi.Update) bool
-type botMessageEvent func(bot *tgbotapi.BotAPI, msg *tgbotapi.Message) bool
-type botInlineQueryEvent func(bot *tgbotapi.BotAPI, query *tgbotapi.InlineQuery) bool
-type botChosenInlineResultEvent func(bot *tgbotapi.BotAPI, result *tgbotapi.ChosenInlineResult) bool
-type botCallbackQueryEvent func(bot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery) bool
-type botShippingQueryEvent func(bot *tgbotapi.BotAPI, query *tgbotapi.ShippingQuery) bool
-type botPreCheckoutQueryEvent func(bot *tgbotapi.BotAPI, query *tgbotapi.PreCheckoutQuery) bool
+type botUpdateEvent func(bot *tg.BotAPI, msg *tg.Update) bool
+type botMessageEvent func(bot *tg.BotAPI, msg *tg.Message) bool
+type botInlineQueryEvent func(bot *tg.BotAPI, query *tg.InlineQuery) bool
+type botChosenInlineResultEvent func(bot *tg.BotAPI, result *tg.ChosenInlineResult) bool
+type botCallbackQueryEvent func(bot *tg.BotAPI, query *tg.CallbackQuery) bool
+type botShippingQueryEvent func(bot *tg.BotAPI, query *tg.ShippingQuery) bool
+type botPreCheckoutQueryEvent func(bot *tg.BotAPI, query *tg.PreCheckoutQuery) bool
 
 type botEventHandlers struct {
 	onUpdate             botUpdateEvent
@@ -26,41 +26,41 @@ type botEventHandlers struct {
 	onPreCheckoutQuery   botPreCheckoutQueryEvent
 }
 
-func runBot(bot *tgbotapi.BotAPI, botUpdate botEventHandlers) {
-	u := tgbotapi.NewUpdate(0)
+func runBot(bot *tg.BotAPI, handler botEventHandlers) {
+	u := tg.NewUpdate(0)
 	u.Timeout = 60
 	updates, _ := bot.GetUpdatesChan(u)
 
 	var keepgoing = true
 	for update := range updates {
 		// Support generic handling of the raw update message.
-		if botUpdate.onUpdate != nil && !botUpdate.onUpdate(bot, &update) {
+		if handler.onUpdate != nil && !handler.onUpdate(bot, &update) {
 			break
 		}
 
 		// Call specific event handlers
 		switch {
-		case update.Message != nil && botUpdate.onMessage != nil:
-			keepgoing = botUpdate.onMessage(bot, update.Message)
-		case update.EditedMessage != nil && botUpdate.onEditedMessage != nil:
-			keepgoing = botUpdate.onEditedMessage(bot, update.EditedMessage)
-		case update.ChannelPost != nil && botUpdate.onChannelPost != nil:
-			keepgoing = botUpdate.onChannelPost(bot, update.ChannelPost)
-		case update.EditedChannelPost != nil && botUpdate.onEditedChannelPost != nil:
-			keepgoing = botUpdate.onEditedChannelPost(bot, update.EditedChannelPost)
-		case update.InlineQuery != nil && botUpdate.onInlineQuery != nil:
-			keepgoing = botUpdate.onInlineQuery(bot, update.InlineQuery)
-		case update.ChosenInlineResult != nil && botUpdate.onChosenInlineResult != nil:
-			keepgoing = botUpdate.onChosenInlineResult(bot, update.ChosenInlineResult)
-		case update.CallbackQuery != nil && botUpdate.onCallbackQuery != nil:
-			keepgoing = botUpdate.onCallbackQuery(bot, update.CallbackQuery)
-		case update.ShippingQuery != nil && botUpdate.onShippingQuery != nil:
-			keepgoing = botUpdate.onShippingQuery(bot, update.ShippingQuery)
-		case update.PreCheckoutQuery != nil && botUpdate.onPreCheckoutQuery != nil:
-			keepgoing = botUpdate.onPreCheckoutQuery(bot, update.PreCheckoutQuery)
+		case update.Message != nil && handler.onMessage != nil:
+			keepgoing = handler.onMessage(bot, update.Message)
+		case update.EditedMessage != nil && handler.onEditedMessage != nil:
+			keepgoing = handler.onEditedMessage(bot, update.EditedMessage)
+		case update.ChannelPost != nil && handler.onChannelPost != nil:
+			keepgoing = handler.onChannelPost(bot, update.ChannelPost)
+		case update.EditedChannelPost != nil && handler.onEditedChannelPost != nil:
+			keepgoing = handler.onEditedChannelPost(bot, update.EditedChannelPost)
+		case update.InlineQuery != nil && handler.onInlineQuery != nil:
+			keepgoing = handler.onInlineQuery(bot, update.InlineQuery)
+		case update.ChosenInlineResult != nil && handler.onChosenInlineResult != nil:
+			keepgoing = handler.onChosenInlineResult(bot, update.ChosenInlineResult)
+		case update.CallbackQuery != nil && handler.onCallbackQuery != nil:
+			keepgoing = handler.onCallbackQuery(bot, update.CallbackQuery)
+		case update.ShippingQuery != nil && handler.onShippingQuery != nil:
+			keepgoing = handler.onShippingQuery(bot, update.ShippingQuery)
+		case update.PreCheckoutQuery != nil && handler.onPreCheckoutQuery != nil:
+			keepgoing = handler.onPreCheckoutQuery(bot, update.PreCheckoutQuery)
 		default:
 			if bot.Debug {
-				log.Print("Unhandled Bot Event...")
+				log.Printf("Unhandled Bot Event: %v", update)
 			}
 			keepgoing = true
 		}
