@@ -86,10 +86,10 @@ func torigemubotOnInlineQuery(bot *tg.BotAPI, query *tg.InlineQuery) bool {
 func doNewGame(bot *tg.BotAPI, msg *tg.Message) {
 	log.Println("Received newgame command.")
 	// TODO: Add some safety checks so that one other person must agree. Give a lazy consensus time.
-	// If noone objects within 1 minute, then the game starts new. If someone agrees, it starts new right away.
+	// If no one objects within 1 minute, then the game starts new. If someone agrees, it starts new right away.
 	// If someone objects, then the reset is canceled.
-	newGame(bot, msg.Chat, true)
-	joinGame(bot, msg)
+	createGame(bot, msg.Chat)
+	joinGame(bot, msg.From, msg.Chat, false)
 	bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("New game started by %s.\nWho wants to go first?", getUserDisplayName(msg.From))))
 }
 
@@ -124,7 +124,7 @@ func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
 	// Auto-create the game.
 	createGame(bot, msg.Chat)
 	// Auto-join the game.
-	joinGame(bot, msg)
+	joinGame(bot, msg.From, msg.Chat, true)
 	if usedWords == nil {
 		usedWords = make(WordHistoryMap)
 	}
@@ -180,12 +180,13 @@ func createGame(bot *tg.BotAPI, chat *tg.Chat) {
 	}
 }
 
-func joinGame(bot *tg.BotAPI, msg *tg.Message) {
-	player := msg.From
-	if _, index := findPlayer(msg.Chat.ID, player); index < 0 {
-		log.Printf("Adding %s to game %s.", getUserDisplayName(player), getGameName(msg.Chat))
-		players[msg.Chat.ID] = append(players[msg.Chat.ID], player)
-		bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("%s joined the game.", getUserDisplayName(player))))
+func joinGame(bot *tg.BotAPI, player *tg.User, chat *tg.Chat, announce bool) {
+	if _, index := findPlayer(chat.ID, player); index < 0 {
+		log.Printf("Adding %s to game %s.", getUserDisplayName(player), getGameName(chat))
+		players[chat.ID] = append(players[chat.ID], player)
+		if announce {
+			bot.Send(tg.NewMessage(chat.ID, fmt.Sprintf("%s joined the game.", getUserDisplayName(player))))
+		}
 	}
 }
 
