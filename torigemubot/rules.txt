@@ -1,0 +1,32 @@
+Basic rules
+-----------------
+
+* Two or more people take turns to play.
+* Only nouns are permitted.
+* A player who plays a word ending in the mora N (ん) loses the game, as no Japanese word begins with that character.
+* Words may not be repeated.
+* Phrases connected by no (の) are permitted, but only in those cases where the phrase is sufficiently fossilized to be considered a "word".
+
+Example: sakura (さくら) → rajio (ラジオ) → onigiri (おにぎり) → risu (りす) → sumou (すもう) → udon (うどん)
+
+The player who used the word udon lost this game.
+
+There are various optional and advanced rules, which must be agreed on before the game begins.
+
+Optional rules
+-----------------
+
+* Dakuten and handakuten may be ignored or added. Thus suupu (スープ) may be followed by furo (ふろ), and sato (さと) may be followed by dochi (どち).
+* A long vowel may either be ignored or considered as a vowel. Mikisaa (ミキサー/みきさあ) can be followed by either sakura (さくら) or aki (あき).
+* Common pronouns and place names may be permitted. Example: Edo jou (えどじょう) lit. Edo castle is acceptable.
+* Two words spelled with the same kana but different kanji may be permitted. For example, Su (す) can either be spelled as "巣" (lit. a birdnest) or "酢" (lit. vinegar).
+
+Advanced rules
+-----------------
+
+* Words are limited to a certain genre.
+* Instead of using only the last kana, the final two kana must be used again. In this case, only the first kana may not be the mora N (ん).
+* The length of a word must be three or more syllables.
+* Only words beginning and ending in dakuten and handakuten may be used.
+
+[From: https://en.wikipedia.org/wiki/Shiritori]

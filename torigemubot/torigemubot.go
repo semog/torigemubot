@@ -88,7 +88,7 @@ func doNewGame(bot *tg.BotAPI, msg *tg.Message) {
 	// TODO: Add some safety checks so that one other person must agree. Give a lazy consensus time.
 	// If noone objects within 1 minute, then the game starts new. If someone agrees, it starts new right away.
 	// If someone objects, then the reset is canceled.
-	newGame(msg.Chat)
+	newGame(bot, msg.Chat, true)
 	joinGame(bot, msg)
 	bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("New game started by %s.\nWho wants to go first?", getUserDisplayName(msg.From))))
 }
@@ -119,18 +119,27 @@ func doChallenge(bot *tg.BotAPI, msg *tg.Message) {
 }
 
 func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
-	log.Println("Received a NEW word!.")
+	log.Println("Received a word submission.")
+	theWord := msg.Text
+	// Auto-create the game.
+	createGame(bot, msg.Chat)
 	// Auto-join the game.
 	joinGame(bot, msg)
-	if currentWord == nil {
-		currentWord = make(WordMap)
-	}
-	currentWord[msg.Chat.ID] = msg.Text
-
 	if usedWords == nil {
 		usedWords = make(WordHistoryMap)
 	}
-	usedWords[msg.Chat.ID] = append(usedWords[msg.Chat.ID], msg.Text)
+
+	if alreadyUsedWord(msg.Chat, theWord) {
+		userLostGame(bot, msg, fmt.Sprintf("Already used word: %s", theWord))
+		newGame(bot, msg.Chat, false)
+		return
+	}
+
+	if currentWord == nil {
+		currentWord = make(WordMap)
+	}
+	currentWord[msg.Chat.ID] = theWord
+	usedWords[msg.Chat.ID] = append(usedWords[msg.Chat.ID], theWord)
 
 	// TODO: Calculate scores. If only one person, then no scores awarded.
 	// TODO: Display the name of person and amount of points won/lost for this word entry.
@@ -148,26 +157,33 @@ func doShutdown(bot *tg.BotAPI, msg *tg.Message) {
 }
 
 // TODO: Do a new game if the bot is kicked out of chat.
-func newGame(chat *tg.Chat) {
+func newGame(bot *tg.BotAPI, chat *tg.Chat, withNewPlayers bool) {
 	if currentWord != nil {
 		delete(currentWord, chat.ID)
 	}
 	if usedWords != nil {
 		delete(usedWords, chat.ID)
 	}
-	if players != nil {
+	if withNewPlayers && players != nil {
 		delete(players, chat.ID)
 	}
+	bot.Send(tg.NewMessage(chat.ID, "Starting New Game..."))
 }
 
-func joinGame(bot *tg.BotAPI, msg *tg.Message) {
+func createGame(bot *tg.BotAPI, chat *tg.Chat) {
 	if players == nil {
 		players = make(PlayerDataMap)
 	}
 
+	if len(players[chat.ID]) == 0 {
+		newGame(bot, chat, true)
+	}
+}
+
+func joinGame(bot *tg.BotAPI, msg *tg.Message) {
 	player := msg.From
 	if _, index := findPlayer(msg.Chat.ID, player); index < 0 {
-		log.Printf("Adding player %s to game %s.", getUserDisplayName(player), getGameName(msg.Chat))
+		log.Printf("Adding %s to game %s.", getUserDisplayName(player), getGameName(msg.Chat))
 		players[msg.Chat.ID] = append(players[msg.Chat.ID], player)
 		bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("%s joined the game.", getUserDisplayName(player))))
 	}
@@ -178,12 +194,26 @@ func getGameName(chat *tg.Chat) string {
 	case "group":
 		return fmt.Sprintf("%s [%d]", chat.Title, chat.ID)
 	default:
-		return fmt.Sprintf("%s %s [%d]", chat.FirstName, chat.LastName, chat.ID)
+		gameName := chat.FirstName
+		if len(chat.LastName) != 0 {
+			gameName += fmt.Sprintf(" %s", chat.LastName)
+		}
+		if len(chat.UserName) != 0 {
+			gameName += fmt.Sprintf(" (@%s)", chat.UserName)
+		}
+		return fmt.Sprintf("%s [%d]", gameName, chat.ID)
 	}
 }
 
 func getUserDisplayName(user *tg.User) string {
-	return fmt.Sprintf("%s %s (%s)", user.FirstName, user.LastName, user.UserName)
+	displayName := user.FirstName
+	if len(user.LastName) != 0 {
+		displayName += fmt.Sprintf(" %s", user.LastName)
+	}
+	if len(user.UserName) != 0 {
+		displayName += fmt.Sprintf(" (@%s)", user.UserName)
+	}
+	return displayName
 }
 
 // For when a user leaves the chat.
@@ -198,7 +228,7 @@ func leaveGame(bot *tg.BotAPI, msg *tg.Message) {
 	bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("%s left the game.", getUserDisplayName(player))))
 	if len(players[msg.Chat.ID]) < 2 {
 		// Game over.
-		newGame(msg.Chat)
+		newGame(bot, msg.Chat, true)
 	}
 }
 
@@ -215,4 +245,19 @@ func findPlayer(chatID int64, user *tg.User) (*tg.User, int) {
 		}
 	}
 	return nil, -1
+}
+
+func alreadyUsedWord(chat *tg.Chat, theWord string) bool {
+	wordCheck := strings.ToLower(theWord)
+	for _, usedWord := range usedWords[chat.ID] {
+		if wordCheck == strings.ToLower(usedWord) {
+			return true
+		}
+	}
+	return false
+}
+
+func userLostGame(bot *tg.BotAPI, msg *tg.Message, reason string) {
+	// TODO: Deduct score points.
+	bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("%s lost the game!\n%s", getUserDisplayName(msg.From), reason)))
 }
