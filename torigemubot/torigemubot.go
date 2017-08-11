@@ -33,21 +33,21 @@ type wordEntry struct {
 	player *tg.User
 }
 
-// WordHistoryMap type to track the words used for each game.
-type WordHistoryMap map[int64][]string
+type wordHistoryMap map[int64][]wordEntry
 
-var usedWords WordHistoryMap
+// Track the words used for each game.
+var usedWords wordHistoryMap
 
-// PlayerMap tracks players in each game
-type PlayerMap map[int64][]*tg.User
+type playerMap map[int64][]*tg.User
 
 // TODO: Enhance the players struct to track their current score.
-var players PlayerMap
+// Track players in each game
+var players playerMap
 
 // Initialize global data
 func torigemubotOnInitialize(bot *tg.BotAPI) bool {
-	usedWords = make(WordHistoryMap)
-	players = make(PlayerMap)
+	usedWords = make(wordHistoryMap)
+	players = make(playerMap)
 	return true
 }
 
@@ -63,7 +63,7 @@ func torigemubotOnMessage(bot *tg.BotAPI, msg *tg.Message) bool {
 	case strings.HasPrefix(msgTextCmd, "/newgame"):
 		doNewGame(bot, msg)
 	case strings.HasPrefix(msgTextCmd, "/current"):
-		doShowCurrentWord(bot, msg)
+		doShowCurrentWord(bot, msg, true)
 	case strings.HasPrefix(msgTextCmd, "/scores"):
 		doShowScores(bot, msg)
 	case strings.HasPrefix(msgTextCmd, "/history"):
@@ -104,13 +104,21 @@ func doNewGame(bot *tg.BotAPI, msg *tg.Message) {
 	bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("%sは新しいゲームを開始しました.\n誰が最初に行きたいですか？", getUserDisplayName(msg.From))))
 }
 
-func doShowCurrentWord(bot *tg.BotAPI, msg *tg.Message) {
+func doShowCurrentWord(bot *tg.BotAPI, msg *tg.Message, showUserInfo bool) {
 	var reply string
 	numWords := len(usedWords[msg.Chat.ID])
 	if numWords == 0 {
 		reply = "現在の言葉はありません。"
 	} else {
-		reply = fmt.Sprintf("現在の言葉は: %s", usedWords[msg.Chat.ID][numWords-1])
+		var wordDisplay string
+		entry := usedWords[msg.Chat.ID][numWords-1]
+		if showUserInfo {
+			wordDisplay = getWordEntryDisplay(entry)
+		} else {
+			wordDisplay = entry.word
+		}
+
+		reply = fmt.Sprintf("現在の言葉は: %s", wordDisplay)
 	}
 	bot.Send(tg.NewMessage(msg.Chat.ID, reply))
 }
@@ -122,7 +130,16 @@ func doShowScores(bot *tg.BotAPI, msg *tg.Message) {
 
 func doShowHistory(bot *tg.BotAPI, msg *tg.Message) {
 	log.Println("Received showhistory command.")
-	bot.Send(tg.NewMessage(msg.Chat.ID, "使用された言葉:\n"+strings.Join(usedWords[msg.Chat.ID], "\n")))
+	wordHistory := "使用された言葉:"
+	for _, entry := range usedWords[msg.Chat.ID] {
+		wordHistory += "\n" + getWordEntryDisplay(entry)
+	}
+	bot.Send(tg.NewMessage(msg.Chat.ID, wordHistory))
+}
+
+func getWordEntryDisplay(entry wordEntry) string {
+	//【】『』「」
+	return fmt.Sprintf("%s 「%s」", entry.word, getUserDisplayName(entry.player))
 }
 
 func doChallenge(bot *tg.BotAPI, msg *tg.Message) {
@@ -144,11 +161,14 @@ func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
 		return
 	}
 
-	usedWords[msg.Chat.ID] = append(usedWords[msg.Chat.ID], theWord)
+	submission := wordEntry{
+		word:   theWord,
+		player: msg.From}
+	usedWords[msg.Chat.ID] = append(usedWords[msg.Chat.ID], submission)
 
 	// TODO: Calculate scores. If only one person, then no scores awarded.
 	// TODO: Display the name of person and amount of points won/lost for this word entry.
-	doShowCurrentWord(bot, msg)
+	doShowCurrentWord(bot, msg, false)
 }
 
 func doHelp(bot *tg.BotAPI, msg *tg.Message) {
@@ -233,7 +253,7 @@ func findPlayer(chatID int64, user *tg.User) (*tg.User, int) {
 func alreadyUsedWord(chat *tg.Chat, theWord string) bool {
 	wordCheck := strings.ToLower(theWord)
 	for _, usedWord := range usedWords[chat.ID] {
-		if wordCheck == strings.ToLower(usedWord) {
+		if wordCheck == strings.ToLower(usedWord.word) {
 			return true
 		}
 	}
