@@ -28,16 +28,14 @@ var torigemubot = botEventHandlers{
 	//	onChosenInlineResult: torigemubotOnChosenInlineResult,
 }
 
-// TODO: Keep historical record of words played. Will be used to verify words are not reused, and for reverting after a challenge.
-// TODO: Create a map of chatID -> currentWord, chatID -> players.
-
-// WordMap will track the current word for each game.
-type WordMap map[int64]string
+type wordEntry struct {
+	word   string
+	player *tg.User
+}
 
 // WordHistoryMap type to track the words used for each game.
 type WordHistoryMap map[int64][]string
 
-var currentWord WordMap
 var usedWords WordHistoryMap
 
 // PlayerMap tracks players in each game
@@ -48,7 +46,6 @@ var players PlayerMap
 
 // Initialize global data
 func torigemubotOnInitialize(bot *tg.BotAPI) bool {
-	currentWord = make(WordMap)
 	usedWords = make(WordHistoryMap)
 	players = make(PlayerMap)
 	return true
@@ -109,11 +106,11 @@ func doNewGame(bot *tg.BotAPI, msg *tg.Message) {
 
 func doShowCurrentWord(bot *tg.BotAPI, msg *tg.Message) {
 	var reply string
-	if len(currentWord[msg.Chat.ID]) == 0 {
-		//reply = "There is no current word."
+	numWords := len(usedWords[msg.Chat.ID])
+	if numWords == 0 {
 		reply = "現在の言葉はありません。"
 	} else {
-		reply = fmt.Sprintf("現在の言葉は: %s", currentWord[msg.Chat.ID])
+		reply = fmt.Sprintf("現在の言葉は: %s", usedWords[msg.Chat.ID][numWords-1])
 	}
 	bot.Send(tg.NewMessage(msg.Chat.ID, reply))
 }
@@ -147,7 +144,6 @@ func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
 		return
 	}
 
-	currentWord[msg.Chat.ID] = theWord
 	usedWords[msg.Chat.ID] = append(usedWords[msg.Chat.ID], theWord)
 
 	// TODO: Calculate scores. If only one person, then no scores awarded.
@@ -178,7 +174,6 @@ func doShutdown(bot *tg.BotAPI, msg *tg.Message) {
 
 // TODO: Do a new game if the bot is kicked out of chat.
 func newGame(bot *tg.BotAPI, chat *tg.Chat, withNewPlayers bool) {
-	delete(currentWord, chat.ID)
 	delete(usedWords, chat.ID)
 	if withNewPlayers {
 		delete(players, chat.ID)
@@ -210,6 +205,7 @@ func leaveGame(bot *tg.BotAPI, msg *tg.Message) {
 	}
 
 	currentPlayers := players[msg.Chat.ID]
+	// Remove the player
 	players[msg.Chat.ID] = append(currentPlayers[:index], currentPlayers[index+1:]...)
 	bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("%sはゲームを去った。", getUserDisplayName(player))))
 	if len(players[msg.Chat.ID]) < 2 {
