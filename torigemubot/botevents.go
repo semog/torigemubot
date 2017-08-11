@@ -5,6 +5,8 @@ import (
 	"log"
 )
 
+type botInitializeEvent func(bot *tg.BotAPI) bool
+type botDisposeEvent func(bot *tg.BotAPI)
 type botUpdateEvent func(bot *tg.BotAPI, msg *tg.Update) bool
 type botMessageEvent func(bot *tg.BotAPI, msg *tg.Message) bool
 type botInlineQueryEvent func(bot *tg.BotAPI, query *tg.InlineQuery) bool
@@ -14,6 +16,8 @@ type botShippingQueryEvent func(bot *tg.BotAPI, query *tg.ShippingQuery) bool
 type botPreCheckoutQueryEvent func(bot *tg.BotAPI, query *tg.PreCheckoutQuery) bool
 
 type botEventHandlers struct {
+	onInitialize         botInitializeEvent
+	onDispose            botDisposeEvent
 	onUpdate             botUpdateEvent
 	onMessage            botMessageEvent
 	onEditedMessage      botMessageEvent
@@ -30,6 +34,10 @@ func runBot(bot *tg.BotAPI, handler botEventHandlers) {
 	u := tg.NewUpdate(0)
 	u.Timeout = 60
 	updates, _ := bot.GetUpdatesChan(u)
+
+	if handler.onInitialize != nil && !handler.onInitialize(bot) {
+		return
+	}
 
 	var keepgoing = true
 	for update := range updates {
@@ -68,6 +76,10 @@ func runBot(bot *tg.BotAPI, handler botEventHandlers) {
 		if !keepgoing {
 			break
 		}
+	}
+
+	if handler.onDispose != nil {
+		handler.onDispose(bot)
 	}
 	log.Printf("Shutting down %s", bot.Self.UserName)
 }

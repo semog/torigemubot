@@ -7,7 +7,7 @@ Basic rules
 * Words may not be repeated.
 * Phrases connected by no (の) are permitted, but only in those cases where the phrase is sufficiently fossilized to be considered a "word".
 
-Example: sakura (さくら) → rajio (ラジオ) → onigiri (おにぎり) → risu (りす) → sumou (すもう) → udon (うどん)
+Example: sakura 「さくら」 → rajio 「ラジオ」 → onigiri 「おにぎり」 → risu 「りす」 → sumou 「すもう」 → udon 「うどん」
 
 The player who used the word udon lost this game.
 
