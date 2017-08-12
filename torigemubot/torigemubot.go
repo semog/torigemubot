@@ -19,7 +19,6 @@ history - Show the words that have been used in the game.
 scores - Show the current scores.
 nick - Set your nickname.
 help - Display game rules and other instructions.
-shutdown - Shutdown the bot (DEBUG ONLY)
 */
 
 var torigemubot = botEventHandlers{
@@ -130,7 +129,7 @@ func doShowScores(bot *tg.BotAPI, chat *tg.Chat) {
 	log.Println("Received showscores command.")
 	scores := "ゲームの得点は\n＿＿＿＿＿＿＿＿＿＿＿"
 	for _, player := range players[chat.ID] {
-		scores += fmt.Sprintf("\n%s 「%d」", getPlayerDisplayName(player), player.score)
+		scores += fmt.Sprintf("\n%s 「%d」 %d言葉", getPlayerDisplayName(player), player.score, player.numWords)
 	}
 	bot.Send(tg.NewMessage(chat.ID, scores))
 }
@@ -196,7 +195,7 @@ func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
 
 	// Calculate points. If the first word, then no points awarded.
 	entryPts := 0
-	if len(usedWords[msg.Chat.ID]) > 1 {
+	if len(usedWords[msg.Chat.ID]) > 0 {
 		entryPts = wordPts
 	}
 	player.score += entryPts
@@ -210,12 +209,11 @@ func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
 }
 
 func doSetNickname(bot *tg.BotAPI, msg *tg.Message, newNickname string) {
-	player, _ := findPlayer(msg.Chat.ID, msg.From)
-	if player != nil {
-		oldName := getPlayerDisplayName(player)
-		player.nickname = newNickname
-		bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("%sは今から%sとよんでます。", oldName, newNickname)))
-	}
+	// Auto-join the game.
+	player := joinGame(bot, msg.From, msg.Chat, false)
+	oldName := getPlayerDisplayName(player)
+	player.nickname = newNickname
+	bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("%sは今から%sとよんでます。", oldName, newNickname)))
 }
 
 func doHelp(bot *tg.BotAPI, msg *tg.Message) {
@@ -289,7 +287,7 @@ func leaveGame(bot *tg.BotAPI, msg *tg.Message) {
 
 func getWordEntryDisplay(entry *wordEntry) string {
 	//【】『』「」
-	return fmt.Sprintf("%s 「%s」", entry.word, getPlayerDisplayName(entry.player))
+	return fmt.Sprintf("%s 【%d】「%s」", entry.word, entry.points, getPlayerDisplayName(entry.player))
 }
 
 func getLastEntry(chat *tg.Chat) *wordEntry {
