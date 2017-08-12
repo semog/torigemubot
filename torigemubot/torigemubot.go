@@ -5,6 +5,7 @@ import (
 	tg "github.com/go-telegram-bot-api/telegram-bot-api"
 	"log"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -38,7 +39,8 @@ type playerEntry struct {
 	score    int
 	numWords int
 }
-type playerMap map[int64][]*playerEntry
+type playerList []*playerEntry
+type playerMap map[int64]playerList
 
 var players playerMap
 
@@ -71,6 +73,7 @@ var scoresCmd = regexp.MustCompile(`(?i)^/?scores(@torigemubot)?`)
 var nicknameCmd = regexp.MustCompile(`(?i)^/?nick(@torigemubot)?[ \t]*`)
 var helpCmd = regexp.MustCompile(`(?i)^/?help(@torigemubot)?`)
 var shutdownCmd = regexp.MustCompile(`(?i)^/?shutdown(@torigemubot)?[ \t]+now`)
+var basicCmd = regexp.MustCompile(`(?i)^/`)
 
 func torigemubotOnMessage(bot *tg.BotAPI, msg *tg.Message) bool {
 	log.Printf("MsgFrom: Chat %s, User %s %s", getGameName(msg.Chat), getUserDisplayName(msg.From), msg.Text)
@@ -92,7 +95,8 @@ func torigemubotOnMessage(bot *tg.BotAPI, msg *tg.Message) bool {
 	case shutdownCmd.MatchString(msg.Text):
 		doShutdown(bot, msg)
 		return false
-	default:
+	// Don't add a word that was a command attempt.
+	case !basicCmd.MatchString(msg.Text):
 		doWordEntry(bot, msg)
 	}
 	return true
@@ -128,6 +132,8 @@ func doShowCurrentWord(bot *tg.BotAPI, msg *tg.Message, showUserInfo bool) {
 func doShowScores(bot *tg.BotAPI, chat *tg.Chat) {
 	log.Println("Received showscores command.")
 	scores := "ゲームの得点は\n＿＿＿＿＿＿＿＿＿＿＿"
+	// Sort by score ranking.
+	sort.Sort(players[chat.ID])
 	for _, player := range players[chat.ID] {
 		scores += fmt.Sprintf("\n%s 「%d」 %d言葉", getPlayerDisplayName(player), player.score, player.numWords)
 	}
@@ -178,7 +184,7 @@ func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
 	// Auto-join the game.
 	player := joinGame(bot, msg.From, msg.Chat, true)
 	if userSubmittedLastWord(msg) {
-		bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("%s様お待ちください。他の人が最初に行くようにしましょう。", msg.From.FirstName)))
+		bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("%s様お待ちください。他の人が最初に行くようにしましょう。", getPlayerDisplayName(player))))
 		doShowCurrentWord(bot, msg, false)
 		return
 	}
@@ -212,13 +218,13 @@ func doSetNickname(bot *tg.BotAPI, msg *tg.Message, newNickname string) {
 	// Auto-join the game.
 	player := joinGame(bot, msg.From, msg.Chat, false)
 	oldName := getPlayerDisplayName(player)
-	if oldName == player.nickname {
+	if oldName == newNickname {
 		reply := tg.NewMessage(msg.Chat.ID, "新しい名前を入力して下さい。")
 		reply.ReplyToMessageID = msg.MessageID
 		bot.Send(reply)
 	} else {
 		player.nickname = newNickname
-		bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("%s様は今から%s様とよんでます。", oldName, newNickname)))
+		bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("%s様は今から%s様とよんでます。", oldName, getPlayerDisplayName(player))))
 	}
 }
 
@@ -378,4 +384,17 @@ func getUserDisplayName(user *tg.User) string {
 		displayname += fmt.Sprintf(" (@%s)", user.UserName)
 	}
 	return displayname
+}
+
+// Implement Len(), Less() and Swap() for sorting.
+func (entries playerList) Len() int {
+	return len(entries)
+}
+
+func (entries playerList) Less(i, j int) bool {
+	return entries[i].score < entries[j].score
+}
+
+func (entries playerList) Swap(i, j int) {
+	entries[i], entries[j] = entries[j], entries[i]
 }
