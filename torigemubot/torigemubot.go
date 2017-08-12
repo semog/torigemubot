@@ -107,7 +107,7 @@ func doNewGame(bot *tg.BotAPI, msg *tg.Message) {
 	// TODO: Add some safety checks so that one other person must agree. Give a lazy consensus time.
 	// If no one objects within 1 minute, then the game starts new. If someone agrees, it starts new right away.
 	// If someone objects, then the reset is canceled.
-	newGame(bot, msg.Chat, false)
+	newGame(bot, msg.Chat, false, false)
 	joinGame(bot, msg.From, msg.Chat, false)
 }
 
@@ -160,11 +160,10 @@ func doChallenge(bot *tg.BotAPI, msg *tg.Message) {
 	if entry.player.user.ID == msg.From.ID {
 		// Player is challenging their own word, so remove it.
 		currentWords := usedWords[msg.Chat.ID]
-		currentEntry := currentWords[len(currentWords)]
 		// Remove points for this word. Also add penalty points.
-		currentEntry.player.score -= currentEntry.points + challengePenaltyPts
+		entry.player.score -= entry.points + challengePenaltyPts
 		usedWords[msg.Chat.ID] = currentWords[:len(currentWords)-1]
-		bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("%sを消しました", currentEntry.word)))
+		bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("%sを消しました", entry.word)))
 		doShowCurrentWord(bot, msg, true)
 	} else {
 		// Auto-join the game.
@@ -190,12 +189,12 @@ func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
 	}
 	if alreadyUsedWord(msg.Chat, theWord) {
 		userLostGame(bot, player, msg, fmt.Sprintf("すでに使用されている言葉: %s", theWord))
-		newGame(bot, msg.Chat, false)
+		newGame(bot, msg.Chat, false, false)
 		return
 	}
 	if !isValidWord(theWord) {
 		userLostGame(bot, player, msg, fmt.Sprintf("無効言葉: %s", theWord))
-		newGame(bot, msg.Chat, false)
+		newGame(bot, msg.Chat, false, false)
 		return
 	}
 
@@ -205,6 +204,7 @@ func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
 		entryPts = wordPts
 	}
 	player.score += entryPts
+	player.numWords++
 	submission := &wordEntry{
 		word:   theWord,
 		player: player,
@@ -251,17 +251,21 @@ func doShutdown(bot *tg.BotAPI, msg *tg.Message) {
 }
 
 // TODO: Do a new game if the bot is kicked out of chat.
-func newGame(bot *tg.BotAPI, chat *tg.Chat, withNewPlayers bool) {
+func newGame(bot *tg.BotAPI, chat *tg.Chat, autostarted bool, withNewPlayers bool) {
 	delete(usedWords, chat.ID)
 	if withNewPlayers {
 		delete(players, chat.ID)
 	}
-	bot.Send(tg.NewMessage(chat.ID, "新しいゲームを開始します。\n誰が最初に行きたいですか？\n(^_^)/"))
+	promptText := ""
+	if !autostarted {
+		promptText = "\n誰が最初に行きたいですか？"
+	}
+	bot.Send(tg.NewMessage(chat.ID, fmt.Sprintf("新しいゲームを開始します。%s\n(^_^)/", promptText)))
 }
 
 func createGame(bot *tg.BotAPI, chat *tg.Chat) {
 	if len(players[chat.ID]) == 0 {
-		newGame(bot, chat, true)
+		newGame(bot, chat, true, true)
 	}
 }
 
@@ -293,7 +297,7 @@ func leaveGame(bot *tg.BotAPI, msg *tg.Message) {
 	bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("%sはゲームを去った。", getPlayerDisplayName(player))))
 	if len(players[msg.Chat.ID]) < 2 {
 		// Game over. No one to play with.
-		newGame(bot, msg.Chat, true)
+		newGame(bot, msg.Chat, false, true)
 	}
 }
 
