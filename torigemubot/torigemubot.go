@@ -96,7 +96,7 @@ func torigemubotOnMessage(bot *tg.BotAPI, msg *tg.Message) bool {
 		doShutdown(bot, msg)
 		return false
 	// Don't add a word that was a command attempt.
-	case !basicCmd.MatchString(msg.Text):
+	case !basicCmd.MatchString(msg.Text) && len(msg.Text) > 0:
 		doWordEntry(bot, msg)
 	}
 	return true
