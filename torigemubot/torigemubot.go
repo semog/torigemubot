@@ -399,7 +399,7 @@ func (entries playerList) Len() int {
 }
 
 func (entries playerList) Less(i, j int) bool {
-	return entries[i].score < entries[j].score
+	return entries[i].score > entries[j].score
 }
 
 func (entries playerList) Swap(i, j int) {
