@@ -212,8 +212,14 @@ func doSetNickname(bot *tg.BotAPI, msg *tg.Message, newNickname string) {
 	// Auto-join the game.
 	player := joinGame(bot, msg.From, msg.Chat, false)
 	oldName := getPlayerDisplayName(player)
-	player.nickname = newNickname
-	bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("%sは今から%sとよんでます。", oldName, newNickname)))
+	if oldName == player.nickname {
+		reply := tg.NewMessage(msg.Chat.ID, "新しい名前を入力して下さい。")
+		reply.ReplyToMessageID = msg.MessageID
+		bot.Send(reply)
+	} else {
+		player.nickname = newNickname
+		bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("%s様は今から%s様とよんでます。", oldName, newNickname)))
+	}
 }
 
 func doHelp(bot *tg.BotAPI, msg *tg.Message) {
