@@ -35,6 +35,14 @@ func runBot(bot *tg.BotAPI, handler botEventHandlers) {
 	u.Timeout = 60
 	updates, _ := bot.GetUpdatesChan(u)
 
+	defer func() {
+		log.Printf("Shutting down %s", bot.Self.UserName)
+		// Must have initialize function in order to call dispose function.
+		if handler.onInitialize != nil && handler.onDispose != nil {
+			handler.onDispose(bot)
+		}
+	}()
+
 	if handler.onInitialize != nil && !handler.onInitialize(bot) {
 		return
 	}
@@ -77,9 +85,4 @@ func runBot(bot *tg.BotAPI, handler botEventHandlers) {
 			break
 		}
 	}
-
-	if handler.onDispose != nil {
-		handler.onDispose(bot)
-	}
-	log.Printf("Shutting down %s", bot.Self.UserName)
 }
