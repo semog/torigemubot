@@ -4,6 +4,7 @@ import (
 	"fmt"
 	tg "github.com/go-telegram-bot-api/telegram-bot-api"
 	"log"
+	"regexp"
 	"strings"
 )
 
@@ -16,6 +17,7 @@ current - Show the current word.
 challenge - Challenge the word that was entered.
 history - Show the words that have been used in the game.
 scores - Show the current scores.
+nick - Set your nickname.
 help - Display game rules and other instructions.
 shutdown - Shutdown the bot (DEBUG ONLY)
 */
@@ -26,21 +28,30 @@ var torigemubot = botEventHandlers{
 	onMessage:    torigemubotOnMessage,
 }
 
-type wordEntry struct {
-	word   string
-	player *tg.User
-}
+const wordPts = 3
+const challengePenaltyPts = 5
+const lostGamePts = 7
 
-type wordHistoryMap map[int64][]wordEntry
+// Track players in each game
+type playerEntry struct {
+	user     *tg.User
+	nickname string
+	score    int
+	numWords int
+}
+type playerMap map[int64][]*playerEntry
+
+var players playerMap
 
 // Track the words used for each game.
+type wordEntry struct {
+	word   string
+	player *playerEntry
+	points int
+}
+type wordHistoryMap map[int64][]*wordEntry
+
 var usedWords wordHistoryMap
-
-type playerMap map[int64][]*tg.User
-
-// TODO: Enhance the players struct to track their current score.
-// Track players in each game
-var players playerMap
 
 // Initialize global data
 func torigemubotOnInitialize(bot *tg.BotAPI) bool {
@@ -53,24 +64,33 @@ func torigemubotOnDispose(bot *tg.BotAPI) {
 	// TODO: Any cleanup of external resources.
 }
 
-func torigemubotOnMessage(bot *tg.BotAPI, msg *tg.Message) bool {
-	msgTextCmd := strings.ToLower(msg.Text)
+var newgameCmd = regexp.MustCompile(`(?i)^/?newgame(@torigemubot)?`)
+var currentCmd = regexp.MustCompile(`(?i)^/?current(@torigemubot)?`)
+var challengeCmd = regexp.MustCompile(`(?i)^/?challenge(@torigemubot)?`)
+var historyCmd = regexp.MustCompile(`(?i)^/?history(@torigemubot)?`)
+var scoresCmd = regexp.MustCompile(`(?i)^/?scores(@torigemubot)?`)
+var nicknameCmd = regexp.MustCompile(`(?i)^/?nick(@torigemubot)?[ \t]*`)
+var helpCmd = regexp.MustCompile(`(?i)^/?help(@torigemubot)?`)
+var shutdownCmd = regexp.MustCompile(`(?i)^/?shutdown(@torigemubot)?[ \t]+now`)
 
+func torigemubotOnMessage(bot *tg.BotAPI, msg *tg.Message) bool {
 	log.Printf("MsgFrom: Chat %s, User %s %s", getGameName(msg.Chat), getUserDisplayName(msg.From), msg.Text)
 	switch {
-	case strings.HasPrefix(msgTextCmd, "/newgame"):
+	case newgameCmd.MatchString(msg.Text):
 		doNewGame(bot, msg)
-	case strings.HasPrefix(msgTextCmd, "/current"):
+	case currentCmd.MatchString(msg.Text):
 		doShowCurrentWord(bot, msg, true)
-	case strings.HasPrefix(msgTextCmd, "/challenge"):
+	case challengeCmd.MatchString(msg.Text):
 		doChallenge(bot, msg)
-	case strings.HasPrefix(msgTextCmd, "/history"):
+	case historyCmd.MatchString(msg.Text):
 		doShowHistory(bot, msg)
-	case strings.HasPrefix(msgTextCmd, "/scores"):
-		doShowScores(bot, msg)
-	case strings.HasPrefix(msgTextCmd, "/help"):
+	case scoresCmd.MatchString(msg.Text):
+		doShowScores(bot, msg.Chat)
+	case nicknameCmd.MatchString(msg.Text):
+		doSetNickname(bot, msg, nicknameCmd.ReplaceAllString(msg.Text, ""))
+	case helpCmd.MatchString(msg.Text):
 		doHelp(bot, msg)
-	case strings.HasPrefix(msgTextCmd, "/shutdown"):
+	case shutdownCmd.MatchString(msg.Text):
 		doShutdown(bot, msg)
 		return false
 	default:
@@ -96,20 +116,23 @@ func doShowCurrentWord(bot *tg.BotAPI, msg *tg.Message, showUserInfo bool) {
 	} else {
 		var wordDisplay string
 		if showUserInfo {
-			wordDisplay = getWordEntryDisplay(*entry)
+			wordDisplay = getWordEntryDisplay(entry)
 		} else {
 			wordDisplay = entry.word
 		}
 
-		reply = fmt.Sprintf("現在の言葉は: %s", wordDisplay)
+		reply = fmt.Sprintf("》%s", wordDisplay)
 	}
 	bot.Send(tg.NewMessage(msg.Chat.ID, reply))
 }
 
-func doShowScores(bot *tg.BotAPI, msg *tg.Message) {
+func doShowScores(bot *tg.BotAPI, chat *tg.Chat) {
 	log.Println("Received showscores command.")
-	// TODO: Tanslate
-	bot.Send(tg.NewMessage(msg.Chat.ID, "Four Score and Seven Words Ago..."))
+	scores := "ゲームの得点は\n＿＿＿＿＿＿＿＿＿＿＿"
+	for _, player := range players[chat.ID] {
+		scores += fmt.Sprintf("\n%s 「%d」", getPlayerDisplayName(player), player.score)
+	}
+	bot.Send(tg.NewMessage(chat.ID, scores))
 }
 
 func doShowHistory(bot *tg.BotAPI, msg *tg.Message) {
@@ -125,20 +148,26 @@ func doChallenge(bot *tg.BotAPI, msg *tg.Message) {
 	log.Println("Received challenge command.")
 	entry := getLastEntry(msg.Chat)
 	if entry == nil {
-		// TODO: Tanslate
-		bot.Send(tg.NewMessage(msg.Chat.ID, "No words to challenge."))
-	} else if entry.player.ID == msg.From.ID {
+		bot.Send(tg.NewMessage(msg.Chat.ID, "言葉はありません。"))
+		return
+	}
+
+	if entry.player.user.ID == msg.From.ID {
 		// Player is challenging their own word, so remove it.
 		currentWords := usedWords[msg.Chat.ID]
+		currentEntry := currentWords[len(currentWords)]
+		// Remove points for this word. Also add penalty points.
+		currentEntry.player.score -= currentEntry.points + challengePenaltyPts
 		usedWords[msg.Chat.ID] = currentWords[:len(currentWords)-1]
-		// TODO: Tanslate
-		bot.Send(tg.NewMessage(msg.Chat.ID, "Removed last word."))
+		bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("%sを消しました", currentEntry.word)))
 		doShowCurrentWord(bot, msg, true)
 	} else {
-		// TODO: Tanslate
+		// Auto-join the game.
+		player := joinGame(bot, msg.From, msg.Chat, true)
+		// TODO: Check tanslation
 		bot.Send(tg.NewMessage(msg.Chat.ID,
-			fmt.Sprintf("%s challenges %s.\nReady.... FIGHT!!!",
-				getUserDisplayName(msg.From), getWordEntryDisplay(*entry))))
+			fmt.Sprintf("%sは%sに挑戦します。\n準備をして。。。戦う!!!",
+				getPlayerDisplayName(player), getWordEntryDisplay(entry))))
 	}
 }
 
@@ -148,29 +177,45 @@ func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
 	// Auto-create the game.
 	createGame(bot, msg.Chat)
 	// Auto-join the game.
-	joinGame(bot, msg.From, msg.Chat, true)
-
+	player := joinGame(bot, msg.From, msg.Chat, true)
 	if userSubmittedLastWord(msg) {
-		// TODO: Tanslate
-		bot.Send(tg.NewMessage(msg.Chat.ID, "Wait your turn."))
+		bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("%s様お待ちください。他の人が最初に行くようにしましょう。", msg.From.FirstName)))
 		doShowCurrentWord(bot, msg, false)
 		return
 	}
-
 	if alreadyUsedWord(msg.Chat, theWord) {
-		userLostGame(bot, msg, fmt.Sprintf("すでに使用されている言葉: %s", theWord))
+		userLostGame(bot, player, msg, fmt.Sprintf("すでに使用されている言葉: %s", theWord))
+		newGame(bot, msg.Chat, false)
+		return
+	}
+	if !isValidWord(theWord) {
+		userLostGame(bot, player, msg, fmt.Sprintf("無効言葉: %s", theWord))
 		newGame(bot, msg.Chat, false)
 		return
 	}
 
-	submission := wordEntry{
+	// Calculate points. If the first word, then no points awarded.
+	entryPts := 0
+	if len(usedWords[msg.Chat.ID]) > 1 {
+		entryPts = wordPts
+	}
+	player.score += entryPts
+	submission := &wordEntry{
 		word:   theWord,
-		player: msg.From}
+		player: player,
+		points: entryPts}
 	usedWords[msg.Chat.ID] = append(usedWords[msg.Chat.ID], submission)
-
-	// TODO: Calculate scores. If only one person, then no scores awarded.
-	// TODO: Display the name of person and amount of points won/lost for this word entry.
+	// TODO: Display the amount of points won/lost for this word entry.
 	doShowCurrentWord(bot, msg, false)
+}
+
+func doSetNickname(bot *tg.BotAPI, msg *tg.Message, newNickname string) {
+	player, _ := findPlayer(msg.Chat.ID, msg.From)
+	if player != nil {
+		oldName := getPlayerDisplayName(player)
+		player.nickname = newNickname
+		bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("%sは今から%sとよんでます。", oldName, newNickname)))
+	}
 }
 
 func doHelp(bot *tg.BotAPI, msg *tg.Message) {
@@ -210,15 +255,19 @@ func createGame(bot *tg.BotAPI, chat *tg.Chat) {
 	}
 }
 
-func joinGame(bot *tg.BotAPI, player *tg.User, chat *tg.Chat, announce bool) {
-	if _, index := findPlayer(chat.ID, player); index < 0 {
-		log.Printf("Adding %s to game %s.", getUserDisplayName(player), getGameName(chat))
+func joinGame(bot *tg.BotAPI, user *tg.User, chat *tg.Chat, announce bool) *playerEntry {
+	player, _ := findPlayer(chat.ID, user)
+	if player == nil {
+		player = &playerEntry{user: user}
+		playerName := getPlayerDisplayName(player)
+		log.Printf("Adding %s to game %s.", playerName, getGameName(chat))
 		players[chat.ID] = append(players[chat.ID], player)
 		// TODO: Temporarily commented out to lower the chat volume.
 		if false && announce {
-			bot.Send(tg.NewMessage(chat.ID, fmt.Sprintf("%sはゲームに参加しました。", getUserDisplayName(player))))
+			bot.Send(tg.NewMessage(chat.ID, fmt.Sprintf("%sはゲームに参加しました。", playerName)))
 		}
 	}
+	return player
 }
 
 // For when a user leaves the chat.
@@ -231,16 +280,16 @@ func leaveGame(bot *tg.BotAPI, msg *tg.Message) {
 	currentPlayers := players[msg.Chat.ID]
 	// Remove the player
 	players[msg.Chat.ID] = append(currentPlayers[:index], currentPlayers[index+1:]...)
-	bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("%sはゲームを去った。", getUserDisplayName(player))))
+	bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("%sはゲームを去った。", getPlayerDisplayName(player))))
 	if len(players[msg.Chat.ID]) < 2 {
 		// Game over.
 		newGame(bot, msg.Chat, true)
 	}
 }
 
-func getWordEntryDisplay(entry wordEntry) string {
+func getWordEntryDisplay(entry *wordEntry) string {
 	//【】『』「」
-	return fmt.Sprintf("%s 「%s」", entry.word, getUserDisplayName(entry.player))
+	return fmt.Sprintf("%s 「%s」", entry.word, getPlayerDisplayName(entry.player))
 }
 
 func getLastEntry(chat *tg.Chat) *wordEntry {
@@ -249,7 +298,7 @@ func getLastEntry(chat *tg.Chat) *wordEntry {
 		return nil
 	}
 
-	return &usedWords[chat.ID][numWords-1]
+	return usedWords[chat.ID][numWords-1]
 }
 
 func userSubmittedLastWord(msg *tg.Message) bool {
@@ -258,19 +307,20 @@ func userSubmittedLastWord(msg *tg.Message) bool {
 		return false
 	}
 
-	return entry.player.ID == msg.From.ID
+	return entry.player.user.ID == msg.From.ID
 }
 
-func userLostGame(bot *tg.BotAPI, msg *tg.Message, reason string) {
-	// TODO: Deduct score points.
-	bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("❌%sはゲームを負けました！\n%s", getUserDisplayName(msg.From), reason)))
+func userLostGame(bot *tg.BotAPI, player *playerEntry, msg *tg.Message, reason string) {
+	player.score -= lostGamePts
+	bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("❌%sはゲームを負けました！\n%s", getPlayerDisplayName(player), reason)))
+	doShowScores(bot, msg.Chat)
 }
 
-func findPlayer(chatID int64, user *tg.User) (*tg.User, int) {
+func findPlayer(chatID int64, user *tg.User) (*playerEntry, int) {
 	for i, player := range players[chatID] {
-		if player.FirstName == user.FirstName &&
-			player.LastName == user.LastName &&
-			player.UserName == user.UserName {
+		if player.user.FirstName == user.FirstName &&
+			player.user.LastName == user.LastName &&
+			player.user.UserName == user.UserName {
 			return player, i
 		}
 	}
@@ -285,6 +335,11 @@ func alreadyUsedWord(chat *tg.Chat, theWord string) bool {
 		}
 	}
 	return false
+}
+
+func isValidWord(theWord string) bool {
+	// TODO: Do database lookup of the noun word.
+	return true
 }
 
 func getGameName(chat *tg.Chat) string {
@@ -303,13 +358,20 @@ func getGameName(chat *tg.Chat) string {
 	}
 }
 
+func getPlayerDisplayName(player *playerEntry) string {
+	if len(player.nickname) == 0 {
+		player.nickname = getUserDisplayName(player.user)
+	}
+	return player.nickname
+}
+
 func getUserDisplayName(user *tg.User) string {
-	displayName := user.FirstName
+	displayname := user.FirstName
 	if len(user.LastName) != 0 {
-		displayName += fmt.Sprintf(" %s", user.LastName)
+		displayname += fmt.Sprintf(" %s", user.LastName)
 	}
 	if len(user.UserName) != 0 {
-		displayName += fmt.Sprintf(" (@%s)", user.UserName)
+		displayname += fmt.Sprintf(" (@%s)", user.UserName)
 	}
-	return displayName
+	return displayname
 }
