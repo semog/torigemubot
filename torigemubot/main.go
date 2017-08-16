@@ -6,9 +6,12 @@ import (
 	"log"
 )
 
+var noturns *bool
+
 func main() {
 	token := flag.String("token", "Ask @BotFather", "telegram bot token")
-	debug := flag.Bool("debug", false, "show debug information")
+	debug := flag.Bool("debug", false, "Show debug information")
+	noturns = flag.Bool("noturns", false, "Don't take turns")
 	flag.Parse()
 
 	if *token == "Ask @BotFather" {
