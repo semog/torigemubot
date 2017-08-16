@@ -176,6 +176,13 @@ func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
 		doShowCurrentWord(bot, msg, false)
 		return
 	}
+	if !respondingToCurrentWord(bot, msg) {
+		replyMsg := tg.NewMessage(chatID, fmt.Sprintf("ヽ(^o^)丿\n%s様は遅いです。\n現在の言葉は：", getPlayerDisplayName(player)))
+		replyMsg.ReplyToMessageID = msg.MessageID
+		bot.Send(replyMsg)
+		doShowCurrentWord(bot, msg, true)
+		return
+	}
 	if alreadyUsedWord(chatID, theWord) {
 		userLostGame(bot, player, msg, fmt.Sprintf("すでに使用されている言葉: %s", theWord))
 		newGame(bot, msg.Chat, false, false)
@@ -184,13 +191,6 @@ func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
 	if !isValidWord(theWord) {
 		userLostGame(bot, player, msg, fmt.Sprintf("無効言葉: %s", theWord))
 		newGame(bot, msg.Chat, false, false)
-		return
-	}
-	if !respondingToCurrentWord(bot, msg) {
-		replyMsg := tg.NewMessage(chatID, fmt.Sprintf("%s様は遅いです。\n現在の言葉は：%s\nヽ(^o^)丿",
-			getPlayerDisplayName(player), getCurrentWordEntryDisplay(msg.Chat, true)))
-		replyMsg.ReplyToMessageID = msg.MessageID
-		bot.Send(replyMsg)
 		return
 	}
 
@@ -422,7 +422,7 @@ func getUserDisplayName(user *tg.User) string {
 
 func isValidWord(theWord string) bool {
 	// TODO: Do database lookup of the noun word.
-	return true
+	return len(kanjiExp.FindString(theWord)) > 0
 }
 
 func respondingToCurrentWord(bot *tg.BotAPI, msg *tg.Message) bool {
