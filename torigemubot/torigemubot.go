@@ -2,11 +2,12 @@ package main
 
 import (
 	"fmt"
-	tg "github.com/go-telegram-bot-api/telegram-bot-api"
 	"log"
 	"regexp"
 	"sort"
 	"strings"
+
+	tg "github.com/go-telegram-bot-api/telegram-bot-api"
 )
 
 /*
@@ -35,10 +36,14 @@ const lostGamePts = 7
 
 // Track players in each game
 type playerEntry struct {
-	user     *tg.User
-	nickname string
-	score    int
-	numWords int
+	id        int
+	user      *tg.User
+	firstname string
+	lastname  string
+	username  string
+	nickname  string
+	score     int
+	numWords  int
 }
 type playerList []*playerEntry
 type playerMap map[int64]playerList
@@ -57,6 +62,10 @@ var usedWords wordHistoryMap
 
 // Initialize global data
 func torigemubotOnInitialize(bot *tg.BotAPI) bool {
+	if !initDb() {
+		log.Println("ERROR: Could not initialize database.")
+		return false
+	}
 	usedWords = make(wordHistoryMap)
 	players = make(playerMap)
 	return true
@@ -64,6 +73,8 @@ func torigemubotOnInitialize(bot *tg.BotAPI) bool {
 
 func torigemubotOnDispose(bot *tg.BotAPI) {
 	// TODO: Any cleanup of external resources.
+	// TODO: saving is temporary. Refactor to operate straight out of database.
+	//savePlayers()
 }
 
 var newgameCmd = regexp.MustCompile(`(?i)^/?newgame(@torigemubot)?`)
@@ -78,7 +89,7 @@ var basicCmd = regexp.MustCompile(`(?i)^/`)
 var kanjiExp = regexp.MustCompile(`(\p{Han}|\p{Katakana}|\p{Hiragana}|ー)+`)
 
 func torigemubotOnMessage(bot *tg.BotAPI, msg *tg.Message) bool {
-	log.Printf("MsgFrom: Chat %s, User %s %s", getGameName(msg.Chat), getUserDisplayName(msg.From), msg.Text)
+	log.Printf("MsgFrom: Chat %s, User %s %s", formatChatName(msg.Chat), formatUserName(msg.From), msg.Text)
 	switch {
 	case newgameCmd.MatchString(msg.Text):
 		doNewGame(bot, msg)
@@ -123,7 +134,7 @@ func doShowScores(bot *tg.BotAPI, chat *tg.Chat) {
 	// Sort by score ranking.
 	sort.Sort(players[chat.ID])
 	for _, player := range players[chat.ID] {
-		scores += fmt.Sprintf("\n%s 「%d」 %d言葉", getPlayerDisplayName(player), player.score, player.numWords)
+		scores += fmt.Sprintf("\n%s 【%d得点】「%d言葉」", formatPlayerName(player), player.score, player.numWords)
 	}
 	bot.Send(tg.NewMessage(chat.ID, scores))
 }
@@ -159,7 +170,7 @@ func doChallenge(bot *tg.BotAPI, msg *tg.Message) {
 		// TODO: Check tanslation
 		bot.Send(tg.NewMessage(msg.Chat.ID,
 			fmt.Sprintf("%sは%sに挑戦します。\n準備をして。。。戦う!!!",
-				getPlayerDisplayName(player), getWordEntryDisplay(entry))))
+				formatPlayerName(player), getWordEntryDisplay(entry))))
 	}
 }
 
@@ -172,12 +183,12 @@ func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
 	// Auto-join the game.
 	player := joinGame(bot, msg.From, msg.Chat, true)
 	if userSubmittedLastWord(msg) {
-		bot.Send(tg.NewMessage(chatID, fmt.Sprintf("%s様お待ちください。他の人が最初に行くようにしましょう。\nヽ(^o^)丿", getPlayerDisplayName(player))))
+		bot.Send(tg.NewMessage(chatID, fmt.Sprintf("%s様お待ちください。他の人が最初に行くようにしましょう。\nヽ(^o^)丿", formatPlayerName(player))))
 		doShowCurrentWord(bot, msg, false)
 		return
 	}
 	if !respondingToCurrentWord(bot, msg) {
-		replyMsg := tg.NewMessage(chatID, fmt.Sprintf("ヽ(^o^)丿\n%s様は遅いです。\n現在の言葉は：", getPlayerDisplayName(player)))
+		replyMsg := tg.NewMessage(chatID, fmt.Sprintf("ヽ(^o^)丿\n%s様は遅いです。\n現在の言葉は：", formatPlayerName(player)))
 		replyMsg.ReplyToMessageID = msg.MessageID
 		bot.Send(replyMsg)
 		doShowCurrentWord(bot, msg, true)
@@ -212,7 +223,6 @@ func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
 		player: player,
 		points: entryPts}
 	usedWords[chatID] = append(usedWords[chatID], submission)
-	savePlayerScores(chatID)
 	// TODO: Display the amount of points won/lost for this word entry.
 	doShowCurrentWord(bot, msg, false)
 }
@@ -220,7 +230,7 @@ func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
 func doSetNickname(bot *tg.BotAPI, msg *tg.Message, newNickname string) {
 	// Auto-join the game.
 	player := joinGame(bot, msg.From, msg.Chat, false)
-	oldName := getPlayerDisplayName(player)
+	oldName := formatPlayerName(player)
 	if oldName == newNickname {
 		reply := tg.NewMessage(msg.Chat.ID, "新しい名前を入力して下さい。\n(^_^)/")
 		reply.ReplyToMessageID = msg.MessageID
@@ -231,7 +241,7 @@ func doSetNickname(bot *tg.BotAPI, msg *tg.Message, newNickname string) {
 		bot.Send(reply)
 	} else {
 		player.nickname = newNickname
-		bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("(@^^)/~~~\n%s様は今から%s様とよんでます。", oldName, getPlayerDisplayName(player))))
+		bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("(@^^)/~~~\n%s様は今から%s様とよんでます。", oldName, formatPlayerName(player))))
 	}
 }
 
@@ -280,8 +290,8 @@ func joinGame(bot *tg.BotAPI, user *tg.User, chat *tg.Chat, announce bool) *play
 	player, _ := findPlayer(chat.ID, user)
 	if player == nil {
 		player = &playerEntry{user: user}
-		playerName := getPlayerDisplayName(player)
-		log.Printf("Adding %s to game %s.", playerName, getGameName(chat))
+		playerName := formatPlayerName(player)
+		log.Printf("Adding %s to game %s.", playerName, formatChatName(chat))
 		players[chat.ID] = append(players[chat.ID], player)
 		// TODO: Temporarily commented out to lower the chat volume.
 		if false && announce {
@@ -301,11 +311,22 @@ func leaveGame(bot *tg.BotAPI, msg *tg.Message) {
 	currentPlayers := players[msg.Chat.ID]
 	// Remove the player
 	players[msg.Chat.ID] = append(currentPlayers[:index], currentPlayers[index+1:]...)
-	bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("%sはゲームを去った。", getPlayerDisplayName(player))))
+	bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("%sはゲームを去った。", formatPlayerName(player))))
 	if len(players[msg.Chat.ID]) < 2 {
 		// Game over. No one to play with.
 		newGame(bot, msg.Chat, false, true)
 	}
+}
+
+func findPlayer(chatID int64, user *tg.User) (*playerEntry, int) {
+	for i, player := range players[chatID] {
+		if player.user.FirstName == user.FirstName &&
+			player.user.LastName == user.LastName &&
+			player.user.UserName == user.UserName {
+			return player, i
+		}
+	}
+	return nil, -1
 }
 
 func getCurrentWordEntryDisplay(chat *tg.Chat, showUserInfo bool) string {
@@ -331,7 +352,7 @@ func getWordEntryDisplay(entry *wordEntry) string {
 	if entry.points > wordPts {
 		bonus = "★"
 	}
-	return fmt.Sprintf("%s 【%d%s】「%s」", entry.word, entry.points, bonus, getPlayerDisplayName(entry.player))
+	return fmt.Sprintf("%s 【%d%s得点】「%s」", entry.word, entry.points, bonus, formatPlayerName(entry.player))
 }
 
 func getLastEntry(chat *tg.Chat) *wordEntry {
@@ -352,19 +373,8 @@ func userSubmittedLastWord(msg *tg.Message) bool {
 
 func userLostGame(bot *tg.BotAPI, player *playerEntry, msg *tg.Message, reason string) {
 	player.score -= lostGamePts
-	bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("❌%sはゲームを負けました！\n%s\n＿|￣|○", getPlayerDisplayName(player), reason)))
+	bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("❌%sはゲームを負けました！\n%s\n＿|￣|○", formatPlayerName(player), reason)))
 	doShowScores(bot, msg.Chat)
-}
-
-func findPlayer(chatID int64, user *tg.User) (*playerEntry, int) {
-	for i, player := range players[chatID] {
-		if player.user.FirstName == user.FirstName &&
-			player.user.LastName == user.LastName &&
-			player.user.UserName == user.UserName {
-			return player, i
-		}
-	}
-	return nil, -1
 }
 
 func nickNameInUse(chatID int64, nickName string) bool {
@@ -386,30 +396,30 @@ func alreadyUsedWord(chatID int64, theWord string) bool {
 	return false
 }
 
-func getGameName(chat *tg.Chat) string {
+func formatChatName(chat *tg.Chat) string {
 	switch chat.Type {
 	case "group":
 		return fmt.Sprintf("%s [%d]", chat.Title, chat.ID)
 	default:
-		gameName := chat.FirstName
+		chatName := chat.FirstName
 		if len(chat.LastName) != 0 {
-			gameName += fmt.Sprintf(" %s", chat.LastName)
+			chatName += fmt.Sprintf(" %s", chat.LastName)
 		}
 		if len(chat.UserName) != 0 {
-			gameName += fmt.Sprintf(" (@%s)", chat.UserName)
+			chatName += fmt.Sprintf(" (@%s)", chat.UserName)
 		}
-		return fmt.Sprintf("%s [%d]", gameName, chat.ID)
+		return fmt.Sprintf("%s [%d]", chatName, chat.ID)
 	}
 }
 
-func getPlayerDisplayName(player *playerEntry) string {
+func formatPlayerName(player *playerEntry) string {
 	if len(player.nickname) == 0 {
-		player.nickname = getUserDisplayName(player.user)
+		player.nickname = formatUserName(player.user)
 	}
 	return player.nickname
 }
 
-func getUserDisplayName(user *tg.User) string {
+func formatUserName(user *tg.User) string {
 	displayname := user.FirstName
 	if len(user.LastName) != 0 {
 		displayname += fmt.Sprintf(" %s", user.LastName)
@@ -441,14 +451,6 @@ func respondingToCurrentWord(bot *tg.BotAPI, msg *tg.Message) bool {
 
 func getNumWords(chatID int64) int {
 	return len(usedWords[chatID])
-}
-
-func loadPlayerScores() {
-	// TODO: Load the player scores from the database.
-}
-
-func savePlayerScores(chatID int64) {
-	// TODO: Persist scores to database.
 }
 
 // Implement Len(), Less() and Swap() for sorting.
