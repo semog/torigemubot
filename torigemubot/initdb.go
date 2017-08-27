@@ -20,7 +20,6 @@ func initDb() bool {
 	if err != nil {
 		return false
 	}
-
 	for _, patch := range patchFuncs {
 		if !patched(patch.patchid) {
 			if !beginPatch() {
@@ -42,7 +41,14 @@ func patched(patchid int) bool {
 	// Check for the patchid in the version table
 	rows, err := db.Query(fmt.Sprintf("SELECT patchid FROM version WHERE patchid = %d", patchid))
 	// If we found it, then it has been patched.
+	defer closeRows(rows)
 	return err == nil && rows.Next()
+}
+
+func closeRows(rows *sql.Rows) {
+	if nil != rows {
+		rows.Close()
+	}
 }
 
 func beginPatch() bool {
@@ -56,7 +62,7 @@ func commitPatch(patchid int) bool {
 }
 
 func rollbackPatch() {
-	rollbackTrans()
+	execDb("ROLLBACK")
 }
 
 func createSavePoint(name string) bool {
@@ -65,27 +71,6 @@ func createSavePoint(name string) bool {
 
 func commitSavePoint(name string) bool {
 	return execDb(fmt.Sprintf("RELEASE SAVEPOINT %s", name))
-}
-
-func beginTrans() {
-	db.Begin()
-	execDb("BEGIN")
-}
-
-func commitTrans() {
-	execDb("COMMIT")
-}
-
-func rollbackTrans() {
-	execDb("ROLLBACK")
-}
-
-func commitOnSuccess(success bool) {
-	if success {
-		commitTrans()
-	} else {
-		rollbackTrans()
-	}
 }
 
 func createTable(tableDef string) bool {
@@ -111,6 +96,7 @@ func execDb(stmt string, args ...interface{}) bool {
 
 func queryDb(stmt string, args ...interface{}) bool {
 	rows, err := db.Query(stmt)
+	defer closeRows(rows)
 	if err == nil && rows.Next() {
 		if args != nil {
 			rows.Scan(args...)

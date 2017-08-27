@@ -51,6 +51,7 @@ func getPlayers(chatID int64) []*playerEntry {
 	players := make(playerList, 0)
 	// Sort by score ranking.
 	rows, err := db.Query(fmt.Sprintf("SELECT userid, firstname, lastname, username, nickname, score, numwords FROM %s WHERE chatid = %d ORDER BY score DESC", playersTableName, chatID))
+	defer closeRows(rows)
 	if err == nil {
 		for rows.Next() {
 			player := &playerEntry{
@@ -64,45 +65,29 @@ func getPlayers(chatID int64) []*playerEntry {
 }
 
 func createPlayer(player *playerEntry) bool {
-	success := false
-	beginTrans()
-	defer commitOnSuccess(success)
-	success = execDb(fmt.Sprintf("INSERT INTO %s (chatid, userid, firstname, lastname, username, nickname, score, numwords) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", playersTableName),
+	return execDb(fmt.Sprintf("INSERT INTO %s (chatid, userid, firstname, lastname, username, nickname, score, numwords) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", playersTableName),
 		player.chatid, player.userid, player.firstname, player.lastname, player.username, player.nickname, player.score, player.numWords)
-	return success
 }
 
 func savePlayer(player *playerEntry) bool {
-	success := false
-	beginTrans()
-	defer commitOnSuccess(success)
-	success = execDb(fmt.Sprintf("UPDATE %s SET firstname = ?, lastname = ?, username = ?, nickname = ?, score = ?, numwords = ? WHERE chatid = ? AND userid = ?", playersTableName),
+	return execDb(fmt.Sprintf("UPDATE %s SET firstname = ?, lastname = ?, username = ?, nickname = ?, score = ?, numwords = ? WHERE chatid = ? AND userid = ?", playersTableName),
 		player.firstname, player.lastname, player.username, player.nickname, player.score, player.numWords, player.chatid, player.userid)
-	return success
 }
 
 func updatePlayerScore(chatID int64, playerid int, scoreUpdate int) bool {
 	var score int
-	success := false
-	beginTrans()
-	defer commitOnSuccess(success)
-	success = queryDb(fmt.Sprintf("SELECT score FROM %s WHERE chatid = %d AND userid = %d", playersTableName, chatID, playerid), &score) &&
+	return queryDb(fmt.Sprintf("SELECT score FROM %s WHERE chatid = %d AND userid = %d", playersTableName, chatID, playerid), &score) &&
 		execDb(fmt.Sprintf("UPDATE %s SET score = ? WHERE chatid = ? AND userid = ?", playersTableName),
 			score+scoreUpdate, chatID, playerid)
-	return success
 }
 
 func updatePlayerWords(chatID int64, playerid int, wordsUpdate int) bool {
 	var numwords int
-	success := false
-	beginTrans()
-	defer commitOnSuccess(success)
-	success = queryDb(fmt.Sprintf("SELECT numwords FROM %s WHERE chatid = %d AND userid = %d", playersTableName, chatID, playerid), &numwords) &&
+	return queryDb(fmt.Sprintf("SELECT numwords FROM %s WHERE chatid = %d AND userid = %d", playersTableName, chatID, playerid), &numwords) &&
 		execDb(fmt.Sprintf("UPDATE %s SET numwords = ? WHERE chatid = ? AND userid = ?", playersTableName),
 			numwords+wordsUpdate, chatID, playerid)
-	return success
 }
 
 func nickNameInUse(chatID int64, nickName string) bool {
-	return queryDb(fmt.Sprintf("SELECT nickname FROM %s WHERE chatid = %d", playersTableName, chatID))
+	return queryDb(fmt.Sprintf("SELECT userid FROM %s WHERE chatid = %d and nickname = '%s'", playersTableName, chatID, nickName))
 }
