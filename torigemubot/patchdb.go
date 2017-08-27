@@ -12,7 +12,7 @@ var patchFuncs = []struct {
 			createTable("players (chatid INTEGER, userid INTEGER, firstname TEXT, lastname TEXT, username TEXT, nickname TEXT COLLATE NOCASE, score INTEGER, numwords INTEGER)") &&
 			createIndex("chat_idx ON players (chatid)") &&
 			createIndex("player_idx ON players (chatid, userid)") &&
-			createTable("usedwords (chatid INTEGER, wordorder INTEGER, playerid INTEGER, word TEXT COLLATE NOCASE, points INTEGER)") &&
+			createTable("usedwords (chatid INTEGER, userid INTEGER, wordorder INTEGER, word TEXT COLLATE NOCASE, points INTEGER)") &&
 			createIndex("wordcheck_idx ON usedwords (chatid, word)")
 	}},
 }

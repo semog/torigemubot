@@ -20,6 +20,10 @@ func initDb() bool {
 	if err != nil {
 		return false
 	}
+	// Currently this patching function does not check to see when it is
+	// finished whether it is running against a _newer_ database. An additional
+	// check would need to be done to see if the final committed patchid matches the
+	// expected patchid.
 	for _, patch := range patchFuncs {
 		if !patched(patch.patchid) {
 			if !beginPatch() {
