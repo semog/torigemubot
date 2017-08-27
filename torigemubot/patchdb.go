@@ -7,12 +7,12 @@ var patchFuncs = []struct {
 	patchFunc func() bool
 }{
 	// Add new patch functions to this array to automatically upgrade the database.
-	{1, createInitialTables},
-}
-
-func createInitialTables() bool {
-	// Create a versions table that tracks patches and upgrades applied to the database.
-	return createTable("version (patchid INTEGER PRIMARY KEY)") &&
-		createTable("players (id INTEGER PRIMARY KEY, chatid INTEGER, userid INTEGER, firstname TEXT, lastname TEXT, username TEXT, nickname TEXT, score INTEGER, numwords INTEGER)") &&
-		createTable("usedwords (chatid INTEGER PRIMARY KEY, wordorder INTEGER, playerid INTEGER, word TEXT, points INTEGER)")
+	{1, func() bool {
+		return createTable("version (patchid INTEGER PRIMARY KEY)") &&
+			createTable("players (chatid INTEGER, userid INTEGER, firstname TEXT, lastname TEXT, username TEXT, nickname TEXT COLLATE NOCASE, score INTEGER, numwords INTEGER)") &&
+			createIndex("chat_idx ON players (chatid)") &&
+			createIndex("player_idx ON players (chatid, userid)") &&
+			createTable("usedwords (chatid INTEGER, wordorder INTEGER, playerid INTEGER, word TEXT COLLATE NOCASE, points INTEGER)") &&
+			createIndex("wordcheck_idx ON usedwords (chatid, word)")
+	}},
 }
