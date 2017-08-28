@@ -1,55 +1,79 @@
 package main
 
 import (
-	"strings"
+	"database/sql"
+	"fmt"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
 
 const usedwordsTableName = "usedwords"
 
-func saveWord(entry *wordEntry) {
-	// TODO: Use the timestamp seconds for wordorder.
-	usedWords[entry.chatid] = append(usedWords[entry.chatid], entry)
-	updatePlayerWords(entry.chatid, entry.userid, 1)
+func addEntry(entry *wordEntry) {
+	beginTrans()
+	// Use the timestamp seconds for wordindex.
+	commitTransOnSuccess(
+		execDb(fmt.Sprintf("INSERT INTO %s (chatid, userid, wordindex, word, points) VALUES (?, ?, ?, ?, ?)", usedwordsTableName),
+			entry.chatid, entry.userid, time.Now().Unix(), entry.word, entry.points) &&
+			updatePlayerWords(entry.chatid, entry.userid, 1))
 }
 
 func alreadyUsedWord(chatID int64, theWord string) bool {
-	wordCheck := strings.ToLower(theWord)
-	for _, usedWord := range usedWords[chatID] {
-		if wordCheck == strings.ToLower(usedWord.word) {
-			return true
-		}
-	}
-	return false
+	return queryDb(fmt.Sprintf("SELECT userid FROM %s WHERE chatid = %d and word = '%s'", usedwordsTableName, chatID, theWord))
 }
 
 func getFirstEntry(chatID int64) *wordEntry {
-	return usedWords[chatID][0]
+	word := &wordEntry{
+		chatid: chatID,
+	}
+	if !queryDb(fmt.Sprintf("SELECT userid, word, points FROM %s WHERE chatid = %d ORDER BY wordindex ASC LIMIT 1", usedwordsTableName, chatID),
+		&word.userid, &word.word, &word.points) {
+		return nil
+	}
+	return word
 }
 
 func getLastEntry(chatID int64) *wordEntry {
-	numWords := len(usedWords[chatID])
-	if numWords == 0 {
+	word := &wordEntry{
+		chatid: chatID,
+	}
+	if !queryDb(fmt.Sprintf("SELECT userid, word, points FROM %s WHERE chatid = %d ORDER BY wordindex DESC LIMIT 1", usedwordsTableName, chatID),
+		&word.userid, &word.word, &word.points) {
 		return nil
 	}
-	return usedWords[chatID][numWords-1]
+	return word
 }
 
 func removeLastEntry(chatID int64) {
-	currentWords := usedWords[chatID]
-	usedWords[chatID] = currentWords[:len(currentWords)-1]
+	execDb(fmt.Sprintf("DELETE FROM %s WHERE chatid = %d ORDER BY wordindex DESC LIMIT 1", usedwordsTableName, chatID))
 }
 
-func getUsedWords(chatID int64) wordList {
-	return usedWords[chatID]
+func updateFirstEntryPoints(chatID int64, wordsUpdate int) bool {
+	return execDb(fmt.Sprintf("UPDATE %s SET points = %d WHERE chatid = %d ORDER BY wordindex ASC LIMIT 1", usedwordsTableName, wordsUpdate, chatID))
 }
 
-func getNumWords(chatID int64) int {
-	return len(usedWords[chatID])
+func getWordHistory(chatID int64) wordList {
+	words := make(wordList, 0)
+	multiQueryDb(fmt.Sprintf("SELECT userid, word, points FROM %s WHERE chatid = %d ORDER BY wordindex", usedwordsTableName, chatID),
+		func(rows *sql.Rows) bool {
+			word := &wordEntry{
+				chatid: chatID,
+			}
+			rows.Scan(&word.userid, &word.word, &word.points)
+			words = append(words, word)
+			return true
+		})
+	return words
 }
 
-func clearSavedWords(chatID int64) {
+func getNumEntries(chatID int64) int {
+	numwords := 0
+	queryDb(fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE chatid = %d", usedwordsTableName, chatID), &numwords)
+	return numwords
+}
+
+func clearWordHistory(chatID int64) {
 	// Clear out the word history.
-	delete(usedWords, chatID)
+	execDb(fmt.Sprintf("DELETE FROM %s WHERE chatid = %d", usedwordsTableName, chatID))
 }

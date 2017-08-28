@@ -66,7 +66,27 @@ func commitPatch(patchid int) bool {
 }
 
 func rollbackPatch() {
+	rollbackTrans()
+}
+
+func beginTrans() {
+	execDb("BEGIN")
+}
+
+func commitTrans() {
+	execDb("COMMIT")
+}
+
+func rollbackTrans() {
 	execDb("ROLLBACK")
+}
+
+func commitTransOnSuccess(success bool) {
+	if success {
+		commitTrans()
+	} else {
+		rollbackTrans()
+	}
 }
 
 func createSavePoint(name string) bool {
@@ -101,11 +121,30 @@ func execDb(stmt string, args ...interface{}) bool {
 func queryDb(stmt string, args ...interface{}) bool {
 	rows, err := db.Query(stmt)
 	defer closeRows(rows)
-	if err == nil && rows.Next() {
+	if err != nil {
+		log.Printf("DBERROR: Querying %s: %v", stmt, err)
+		return false
+	}
+	if rows.Next() {
 		if args != nil {
 			rows.Scan(args...)
 		}
 		return true
 	}
 	return false
+}
+
+func multiQueryDb(stmt string, action func(rows *sql.Rows) bool) bool {
+	rows, err := db.Query(stmt)
+	defer closeRows(rows)
+	if err != nil {
+		log.Printf("DBERROR: Querying %s: %v", stmt, err)
+		return false
+	}
+	for rows.Next() {
+		if !action(rows) {
+			return false
+		}
+	}
+	return true
 }
