@@ -46,11 +46,15 @@ func getLastEntry(chatID int64) *wordEntry {
 }
 
 func removeLastEntry(chatID int64) {
-	execDb(fmt.Sprintf("DELETE FROM %s WHERE chatid = %d ORDER BY wordindex DESC LIMIT 1", usedwordsTableName, chatID))
+	// The following simplified version is not working with the current library, but works with the command-line client.
+	//execDb(fmt.Sprintf("DELETE FROM %s WHERE chatid = %d ORDER BY wordindex DESC LIMIT 1", usedwordsTableName, chatID))
+	execDb(fmt.Sprintf("DELETE FROM %s WHERE chatid = %d and wordindex = (SELECT wordindex from %s WHERE chatid = %d ORDER BY wordindex DESC LIMIT 1)", usedwordsTableName, chatID, usedwordsTableName, chatID))
 }
 
 func updateFirstEntryPoints(chatID int64, wordsUpdate int) bool {
-	return execDb(fmt.Sprintf("UPDATE %s SET points = %d WHERE chatid = %d ORDER BY wordindex ASC LIMIT 1", usedwordsTableName, wordsUpdate, chatID))
+	// The following simplified version is not working with the current library, but works with the command-line client.
+	// return execDb(fmt.Sprintf("UPDATE %s SET points = %d WHERE chatid = %d ORDER BY wordindex ASC LIMIT 1", usedwordsTableName, wordsUpdate, chatID))
+	return execDb(fmt.Sprintf("UPDATE %s SET points = %d WHERE chatid = %d AND wordindex = (SELECT wordindex FROM %s WHERE chatid = %d ORDER BY wordindex ASC LIMIT 1)", usedwordsTableName, wordsUpdate, chatID, usedwordsTableName, chatID))
 }
 
 func getWordHistory(chatID int64) wordList {
