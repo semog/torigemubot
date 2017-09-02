@@ -14,8 +14,8 @@ import (
 )
 
 const dbFilename = "shiritoriwords.db"
-const jmdictFileName = "jmtest.xml"
-const kanjidictFileName = "kanjitest.xml"
+const jmdictFileName = "jmdict.xml"
+const kanjidictFileName = "kanjidic2.xml"
 
 type kmap map[string]int
 
@@ -41,6 +41,10 @@ func main() {
 
 func createKanjiDb(dict *jmdict, kscores kmap) error {
 	var err error
+	err = os.Remove(dbFilename)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
 	db, err = sql.Open("sqlite3", dbFilename)
 	if err != nil {
 		return err
@@ -84,7 +88,8 @@ func saveWord(e entry, kscores kmap) error {
 		}
 		err := execDb("INSERT INTO words (kanji, kana, score) VALUES (?, ?, ?)", kanji, kana, score)
 		if err != nil {
-			return err
+			log.Printf("DBERROR: Failed to insert %v: %v", e, err)
+			// return err
 		}
 	}
 	return nil
@@ -92,11 +97,11 @@ func saveWord(e entry, kscores kmap) error {
 
 var kanjiExp = regexp.MustCompile(`\p{Han}+`)
 
-func getKanjiWordScore(k string, kscores kmap) int {
+func getKanjiWordScore(kanji string, kscores kmap) int {
 	// Words entirely of hiragana or katakana are worth 1 point.
 	score := 1
-	if kanjiExp.MatchString(k) {
-		for _, k := range k {
+	if kanjiExp.MatchString(kanji) {
+		for _, k := range kanji {
 			kscore := kscores[string(k)]
 			if kscore > score {
 				// The word score is equal to the highest kanji score in the word.
@@ -120,9 +125,11 @@ fields. Synonyms are not included; they may be indicated in the
 cross-reference field associated with the sense element.
 */
 func getKanjis(e entry) []string {
-	kanjis := make([]string, 1)
+	kanjis := make([]string, 0)
 	for _, k := range e.Kele {
-		kanjis = append(kanjis, k.Keb)
+		if len(k.Keb) > 0 {
+			kanjis = append(kanjis, k.Keb)
+		}
 	}
 	return kanjis
 }
