@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -16,22 +17,33 @@ import (
 const dbFilename = "shiritoriwords.db"
 const jmdictFileName = "jmdict.xml"
 const kanjidictFileName = "kanjidic2.xml"
+const maxCharScore = 15 // Max grade of 10 + Max JLPT of 5
+const maxLimit = 4      // Arbitrary limit
+const scoreFactor = maxCharScore / maxLimit
+const maxJLPT = 6
 
 type kmap map[string]int
 
 var db *sql.DB
+var insertcount = 0
+var failcount = 0
+var kanjiExp = regexp.MustCompile(`\p{Han}+`)
+var endsInNExp = regexp.MustCompile(`(ん|ン)$`)
 
 func main() {
+	log.Printf("Loading kanji dictionary...")
 	dict, err := getKanjiDict()
 	if err != nil {
 		log.Printf("error: %v", err)
 		return
 	}
+	log.Printf("Loading kanji score map...")
 	kscores, err := getKanjiScoreMap()
 	if err != nil {
 		log.Printf("error: %v", err)
 		return
 	}
+	log.Printf("Creating kanji database...")
 	err = createKanjiDb(dict, kscores)
 	if err != nil {
 		log.Printf("error: %v", err)
@@ -53,14 +65,23 @@ func createKanjiDb(dict *jmdict, kscores kmap) error {
 	if err != nil {
 		return err
 	}
+	// Prepare the statement and use a transaction for massive speed increase.
+	stmt, err := db.Prepare("INSERT INTO words (kanji, kana, score) VALUES (:KJ, :KN, :SC)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	execDb("PRAGMA synchronous = OFF")
+	execDb("PRAGMA journal_mode = MEMORY")
+	execDb("BEGIN")
+	defer execDb("COMMIT")
 	for _, e := range dict.Entry {
 		if isNoun(e) {
-			err = saveWord(e, kscores)
-			if err != nil {
-				return err
-			}
+			saveWord(stmt, e, kscores)
 		}
 	}
+	log.Printf("Inserted %d record(s)", insertcount)
+	log.Printf("Merged %d record(s)", failcount)
 	return nil
 }
 
@@ -75,7 +96,7 @@ func isNoun(e entry) bool {
 	return false
 }
 
-func saveWord(e entry, kscores kmap) error {
+func saveWord(stmt *sql.Stmt, e entry, kscores kmap) {
 	var score int
 	kana, endsInN := getKana(e)
 	// Get all of the entry kanji variants
@@ -86,16 +107,61 @@ func saveWord(e entry, kscores kmap) error {
 		} else {
 			score = getKanjiWordScore(kanji, kscores)
 		}
-		err := execDb("INSERT INTO words (kanji, kana, score) VALUES (?, ?, ?)", kanji, kana, score)
+		_, err := stmt.Exec(sql.Named("KJ", &kanji), sql.Named("KN", &kana), sql.Named("SC", &score))
 		if err != nil {
-			log.Printf("DBERROR: Failed to insert %v: %v", e, err)
+			mergeRecords(kanji, kana, score)
+			failcount++
 			// return err
+		} else {
+			insertcount++
 		}
 	}
-	return nil
 }
 
-var kanjiExp = regexp.MustCompile(`\p{Han}+`)
+func mergeRecords(kanji string, kana string, score int) {
+	var existingKana string
+	var existingScore int
+	found := queryDb(fmt.Sprintf("SELECT kana, score FROM words WHERE kanji = '%s'", kanji),
+		&existingKana, &existingScore)
+	if !found {
+		log.Printf("DBERROR: Could not find record for %s", kanji)
+		return
+	}
+	// Merge kana and the word score.
+	newKana := mergeStrings(existingKana, kana)
+	newScore := mergeScore(existingScore, score)
+	err := execDb("UPDATE words SET kana = ?, score = ? WHERE kanji = ?", &newKana, &newScore, &kanji)
+	if err != nil {
+		log.Printf("DBERROR updating %s", kanji)
+	}
+}
+
+func mergeStrings(first string, second string) string {
+	mergedmap := make(map[string]bool)
+	addStrings(mergedmap, first)
+	addStrings(mergedmap, second)
+	mergedString := ""
+	for str := range mergedmap {
+		if len(mergedString) > 0 {
+			mergedString += ","
+		}
+		mergedString += str
+	}
+	return mergedString
+}
+
+func addStrings(dest map[string]bool, strs string) {
+	for _, str := range strings.Split(strs, ",") {
+		dest[str] = true
+	}
+}
+
+func mergeScore(first int, second int) int {
+	if first > second {
+		return first
+	}
+	return second
+}
 
 func getKanjiWordScore(kanji string, kscores kmap) int {
 	// Words entirely of hiragana or katakana are worth 1 point.
@@ -133,8 +199,6 @@ func getKanjis(e entry) []string {
 	}
 	return kanjis
 }
-
-var endsInNExp = regexp.MustCompile(`(ん|ン)$`)
 
 func getKana(e entry) (string, bool) {
 	kanas := ""
@@ -187,11 +251,6 @@ func getKanjiScoreMap() (kmap, error) {
 	return kscores, nil
 }
 
-const maxCharScore = 15 // Max grade of 10 + Max JLPT of 5
-const maxLimit = 4      // Arbitrary limit
-const scoreFactor = maxCharScore / maxLimit
-const maxJLPT = 6
-
 func getCharacterScore(ch character) int {
 	score := ch.Misc.Grade
 	if ch.Misc.JLPT > 0 {
@@ -226,12 +285,30 @@ func createIndex(indexDef string) error {
 func execDb(stmt string, args ...interface{}) error {
 	statement, err := db.Prepare(stmt)
 	if err != nil {
-		log.Printf("DBERROR: Preparing %s: %v", stmt, err)
 		return err
 	}
 	_, err = statement.Exec(args...)
-	if err != nil {
-		log.Printf("DBERROR: Executing %s: %v", stmt, err)
-	}
 	return err
+}
+
+func queryDb(stmt string, args ...interface{}) bool {
+	rows, err := db.Query(stmt)
+	defer closeRows(rows)
+	if err != nil {
+		log.Printf("DBERROR: Querying %s: %v", stmt, err)
+		return false
+	}
+	if rows.Next() {
+		if args != nil {
+			rows.Scan(args...)
+		}
+		return true
+	}
+	return false
+}
+
+func closeRows(rows *sql.Rows) {
+	if nil != rows {
+		rows.Close()
+	}
 }
