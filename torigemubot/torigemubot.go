@@ -27,10 +27,9 @@ var torigemubot = botEventHandlers{
 	onMessage:    torigemubotOnMessage,
 }
 
-const wordPts = 3
-const firstWordPts = 2
 const challengePenaltyPts = 5
 const lostGamePts = 7
+const stdWordPts = 3
 
 // TODO: Add cleanup of game data from the database if a chat is destroyed, or the bot is kicked out (same thing).
 
@@ -168,7 +167,7 @@ func doChallenge(bot *tg.BotAPI, msg *tg.Message) {
 		doShowCurrentWord(bot, msg, true)
 	} else {
 		player := getPlayer(msg.Chat.ID, msg.From)
-		// TODO: Check tanslation
+		// TODO: Check translation
 		bot.Send(tg.NewMessage(msg.Chat.ID,
 			fmt.Sprintf("%sは%sに挑戦します。\n準備をして。。。戦う!!!",
 				formatPlayerName(player), getWordEntryDisplay(msg.Chat.ID, entry))))
@@ -201,24 +200,25 @@ func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
 		return
 	}
 	// Checking word validity is a longer operation, so we do it last.
-	if !isValidWord(theWord) {
+	entryPts := getWordPts(theWord)
+	if entryPts == 0 {
 		userLostGame(bot, player, fmt.Sprintf("無効言葉: %s", theWord))
 		newGame(bot, msg.Chat)
 		return
 	}
-
-	// Calculate points. If the first word, then no points awarded until
-	// at least one other person goes.
-	entryPts := 0
 	if getNumEntries(chatID) > 0 {
-		entryPts = wordPts
 		updatePlayerScore(chatID, player.userid, entryPts)
 		firstEntry := getFirstEntry(chatID)
 		if firstEntry.points == 0 {
+			firstWordPts := getWordPts(firstEntry.word)
 			// Now award the points to the player who went first.
 			updateFirstEntryPoints(chatID, firstWordPts)
 			updatePlayerScore(chatID, firstEntry.userid, firstWordPts)
 		}
+	} else {
+		// If the first word, then no points awarded until
+		// at least one other person goes.
+		entryPts = 0
 	}
 	entry := &wordEntry{
 		chatid: chatID,
@@ -295,7 +295,7 @@ func getCurrentWordEntryDisplay(chat *tg.Chat, showUserInfo bool) string {
 
 func getWordEntryDisplay(chatID int64, entry *wordEntry) string {
 	bonus := ""
-	if entry.points > wordPts {
+	if entry.points > stdWordPts {
 		bonus = "★ "
 	}
 	player, _ := getPlayerByID(chatID, entry.userid)
@@ -341,15 +341,20 @@ func formatPlayerName(player *playerEntry) string {
 	return player.nickname
 }
 
-func isValidWord(theWord string) bool {
-	// TODO: Do database lookup of the noun word.
-	return len(kanjiExp.FindString(theWord)) > 0
-}
-
 func respondingToCurrentWord(bot *tg.BotAPI, msg *tg.Message, lastentry *wordEntry) bool {
 	if msg.ReplyToMessage == nil {
 		// Must have a reply to message, even in direct chats.
 		return false
 	}
 	return lastentry.word == kanjiExp.FindString(msg.ReplyToMessage.Text)
+}
+
+func getWordPts(theWord string) int {
+	// TODO
+	// Get wordentry of new word.
+	// If word score is zero or not found, then return zero. Probably ends in 'no'.
+	// Get wordentry of current word.
+	// If first kana of new word does not match ending kana of current word, then return zero.
+	// Return word points.
+	return len(kanjiExp.FindString(theWord))
 }
