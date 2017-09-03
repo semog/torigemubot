@@ -68,7 +68,7 @@ var newgameCmd,
 
 // Initialize global data
 func torigemubotOnInitialize(bot *tg.BotAPI) bool {
-	if !initDb() {
+	if !initgameDb() {
 		log.Println("ERROR: Could not initialize database.")
 		return false
 	}
@@ -347,14 +347,4 @@ func respondingToCurrentWord(bot *tg.BotAPI, msg *tg.Message, lastentry *wordEnt
 		return false
 	}
 	return lastentry.word == kanjiExp.FindString(msg.ReplyToMessage.Text)
-}
-
-func getWordPts(theWord string) int {
-	// TODO
-	// Get wordentry of new word.
-	// If word score is zero or not found, then return zero. Probably ends in 'no'.
-	// Get wordentry of current word.
-	// If first kana of new word does not match ending kana of current word, then return zero.
-	// Return word points.
-	return len(kanjiExp.FindString(theWord))
 }

@@ -11,23 +11,23 @@ import (
 const usedwordsTableName = "usedwords"
 
 func addEntry(entry *wordEntry) {
-	beginTrans()
+	gamedb.beginTrans()
 	// Use the timestamp seconds for wordindex.
-	commitTransOnSuccess(
-		execDb(fmt.Sprintf("INSERT INTO %s (chatid, userid, wordindex, word, points) VALUES (?, ?, ?, ?, ?)", usedwordsTableName),
+	gamedb.commitTransOnSuccess(
+		gamedb.exec(fmt.Sprintf("INSERT INTO %s (chatid, userid, wordindex, word, points) VALUES (?, ?, ?, ?, ?)", usedwordsTableName),
 			entry.chatid, entry.userid, time.Now().Unix(), entry.word, entry.points) &&
 			updatePlayerWords(entry.chatid, entry.userid, 1))
 }
 
 func alreadyUsedWord(chatID int64, theWord string) bool {
-	return queryDb(fmt.Sprintf("SELECT userid FROM %s WHERE chatid = %d and word = '%s'", usedwordsTableName, chatID, theWord))
+	return gamedb.query(fmt.Sprintf("SELECT userid FROM %s WHERE chatid = %d and word = '%s'", usedwordsTableName, chatID, theWord))
 }
 
 func getFirstEntry(chatID int64) *wordEntry {
 	word := &wordEntry{
 		chatid: chatID,
 	}
-	if !queryDb(fmt.Sprintf("SELECT userid, word, points FROM %s WHERE chatid = %d ORDER BY wordindex ASC LIMIT 1", usedwordsTableName, chatID),
+	if !gamedb.query(fmt.Sprintf("SELECT userid, word, points FROM %s WHERE chatid = %d ORDER BY wordindex ASC LIMIT 1", usedwordsTableName, chatID),
 		&word.userid, &word.word, &word.points) {
 		return nil
 	}
@@ -38,7 +38,7 @@ func getLastEntry(chatID int64) *wordEntry {
 	word := &wordEntry{
 		chatid: chatID,
 	}
-	if !queryDb(fmt.Sprintf("SELECT userid, word, points FROM %s WHERE chatid = %d ORDER BY wordindex DESC LIMIT 1", usedwordsTableName, chatID),
+	if !gamedb.query(fmt.Sprintf("SELECT userid, word, points FROM %s WHERE chatid = %d ORDER BY wordindex DESC LIMIT 1", usedwordsTableName, chatID),
 		&word.userid, &word.word, &word.points) {
 		return nil
 	}
@@ -48,18 +48,18 @@ func getLastEntry(chatID int64) *wordEntry {
 func removeLastEntry(chatID int64) {
 	// The following simplified version is not working with the current library, but works with the command-line client.
 	//execDb(fmt.Sprintf("DELETE FROM %s WHERE chatid = %d ORDER BY wordindex DESC LIMIT 1", usedwordsTableName, chatID))
-	execDb(fmt.Sprintf("DELETE FROM %s WHERE chatid = %d and wordindex = (SELECT wordindex from %s WHERE chatid = %d ORDER BY wordindex DESC LIMIT 1)", usedwordsTableName, chatID, usedwordsTableName, chatID))
+	gamedb.exec(fmt.Sprintf("DELETE FROM %s WHERE chatid = %d and wordindex = (SELECT wordindex from %s WHERE chatid = %d ORDER BY wordindex DESC LIMIT 1)", usedwordsTableName, chatID, usedwordsTableName, chatID))
 }
 
 func updateFirstEntryPoints(chatID int64, wordsUpdate int) bool {
 	// The following simplified version is not working with the current library, but works with the command-line client.
 	// return execDb(fmt.Sprintf("UPDATE %s SET points = %d WHERE chatid = %d ORDER BY wordindex ASC LIMIT 1", usedwordsTableName, wordsUpdate, chatID))
-	return execDb(fmt.Sprintf("UPDATE %s SET points = %d WHERE chatid = %d AND wordindex = (SELECT wordindex FROM %s WHERE chatid = %d ORDER BY wordindex ASC LIMIT 1)", usedwordsTableName, wordsUpdate, chatID, usedwordsTableName, chatID))
+	return gamedb.exec(fmt.Sprintf("UPDATE %s SET points = %d WHERE chatid = %d AND wordindex = (SELECT wordindex FROM %s WHERE chatid = %d ORDER BY wordindex ASC LIMIT 1)", usedwordsTableName, wordsUpdate, chatID, usedwordsTableName, chatID))
 }
 
 func getWordHistory(chatID int64) wordList {
 	words := make(wordList, 0)
-	multiQueryDb(fmt.Sprintf("SELECT userid, word, points FROM %s WHERE chatid = %d ORDER BY wordindex", usedwordsTableName, chatID),
+	gamedb.multiQuery(fmt.Sprintf("SELECT userid, word, points FROM %s WHERE chatid = %d ORDER BY wordindex", usedwordsTableName, chatID),
 		func(rows *sql.Rows) bool {
 			word := &wordEntry{
 				chatid: chatID,
@@ -73,11 +73,11 @@ func getWordHistory(chatID int64) wordList {
 
 func getNumEntries(chatID int64) int {
 	numwords := 0
-	queryDb(fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE chatid = %d", usedwordsTableName, chatID), &numwords)
+	gamedb.query(fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE chatid = %d", usedwordsTableName, chatID), &numwords)
 	return numwords
 }
 
 func clearWordHistory(chatID int64) {
 	// Clear out the word history.
-	execDb(fmt.Sprintf("DELETE FROM %s WHERE chatid = %d", usedwordsTableName, chatID))
+	gamedb.exec(fmt.Sprintf("DELETE FROM %s WHERE chatid = %d", usedwordsTableName, chatID))
 }
