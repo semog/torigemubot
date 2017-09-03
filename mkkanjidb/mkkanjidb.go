@@ -17,9 +17,9 @@ import (
 const dbFilename = "shiritoriwords.db"
 const jmdictFileName = "jmdict.xml"
 const kanjidictFileName = "kanjidic2.xml"
-const maxCharScore = 15 // Max grade of 10 + Max JLPT of 5
-const maxLimit = 4      // Arbitrary limit
-const scoreFactor = maxCharScore / maxLimit
+const maxPts = 15  // Max grade of 10 + Max JLPT of 5
+const maxLimit = 4 // Arbitrary limit
+const ptsFactor = maxPts / maxLimit
 const maxJLPT = 6
 
 type kmap map[string]int
@@ -37,47 +37,45 @@ func main() {
 		log.Printf("error: %v", err)
 		return
 	}
-	log.Printf("Loading kanji score map...")
-	kscores, err := getKanjiScoreMap()
+	log.Printf("Loading kanji points map...")
+	kptsmap, err := getKanjiPtsMap()
 	if err != nil {
 		log.Printf("error: %v", err)
 		return
 	}
 	log.Printf("Creating kanji database...")
-	err = createKanjiDb(dict, kscores)
+	err = createKanjiDb(dict, kptsmap)
 	if err != nil {
 		log.Printf("error: %v", err)
 		return
 	}
 }
 
-func createKanjiDb(dict *jmdict, kscores kmap) error {
+func createKanjiDb(dict *jmdict, kptsmap kmap) error {
 	var err error
-	err = os.Remove(dbFilename)
-	if err != nil && !os.IsNotExist(err) {
-		return err
-	}
 	db, err = sql.Open("sqlite3", dbFilename)
 	if err != nil {
 		return err
 	}
-	err = createTable("words (kanji TEXT PRIMARY KEY, kana TEXT, score INT)")
+	dropTable("words")
+	err = createTable("words (kanji TEXT PRIMARY KEY, kana TEXT, points INT)")
 	if err != nil {
 		return err
 	}
 	// Prepare the statement and use a transaction for massive speed increase.
-	stmt, err := db.Prepare("INSERT INTO words (kanji, kana, score) VALUES (:KJ, :KN, :SC)")
+	stmt, err := db.Prepare("INSERT INTO words (kanji, kana, points) VALUES (:KJ, :KN, :SC)")
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
+	// Optimize the database insertion
 	execDb("PRAGMA synchronous = OFF")
 	execDb("PRAGMA journal_mode = MEMORY")
 	execDb("BEGIN")
 	defer execDb("COMMIT")
 	for _, e := range dict.Entry {
 		if isNoun(e) {
-			saveWord(stmt, e, kscores)
+			saveWord(stmt, e, kptsmap)
 		}
 	}
 	log.Printf("Inserted %d record(s)", insertcount)
@@ -96,20 +94,20 @@ func isNoun(e entry) bool {
 	return false
 }
 
-func saveWord(stmt *sql.Stmt, e entry, kscores kmap) {
-	var score int
+func saveWord(stmt *sql.Stmt, e entry, kptsmap kmap) {
+	var pts int
 	kana, endsInN := getKana(e)
 	// Get all of the entry kanji variants
 	for _, kanji := range getKanjis(e) {
 		if endsInN {
 			// Automatic zero for ending in 'ん'
-			score = 0
+			pts = 0
 		} else {
-			score = getKanjiWordScore(kanji, kscores)
+			pts = getKanjiWordPts(kanji, kptsmap)
 		}
-		_, err := stmt.Exec(sql.Named("KJ", &kanji), sql.Named("KN", &kana), sql.Named("SC", &score))
+		_, err := stmt.Exec(sql.Named("KJ", &kanji), sql.Named("KN", &kana), sql.Named("SC", &pts))
 		if err != nil {
-			mergeRecords(kanji, kana, score)
+			mergeRecords(kanji, kana, pts)
 			failcount++
 			// return err
 		} else {
@@ -118,19 +116,19 @@ func saveWord(stmt *sql.Stmt, e entry, kscores kmap) {
 	}
 }
 
-func mergeRecords(kanji string, kana string, score int) {
+func mergeRecords(kanji string, kana string, pts int) {
 	var existingKana string
-	var existingScore int
-	found := queryDb(fmt.Sprintf("SELECT kana, score FROM words WHERE kanji = '%s'", kanji),
-		&existingKana, &existingScore)
+	var existingPts int
+	found := queryDb(fmt.Sprintf("SELECT kana, points FROM words WHERE kanji = '%s'", kanji),
+		&existingKana, &existingPts)
 	if !found {
 		log.Printf("DBERROR: Could not find record for %s", kanji)
 		return
 	}
-	// Merge kana and the word score.
+	// Merge kana and the word pts.
 	newKana := mergeStrings(existingKana, kana)
-	newScore := mergeScore(existingScore, score)
-	err := execDb("UPDATE words SET kana = ?, score = ? WHERE kanji = ?", &newKana, &newScore, &kanji)
+	newPts := mergePts(existingPts, pts)
+	err := execDb("UPDATE words SET kana = ?, points = ? WHERE kanji = ?", &newKana, &newPts, &kanji)
 	if err != nil {
 		log.Printf("DBERROR updating %s", kanji)
 	}
@@ -156,26 +154,26 @@ func addStrings(dest map[string]bool, strs string) {
 	}
 }
 
-func mergeScore(first int, second int) int {
+func mergePts(first int, second int) int {
 	if first > second {
 		return first
 	}
 	return second
 }
 
-func getKanjiWordScore(kanji string, kscores kmap) int {
+func getKanjiWordPts(kanji string, kptsmap kmap) int {
 	// Words entirely of hiragana or katakana are worth 1 point.
-	score := 1
+	pts := 1
 	if kanjiExp.MatchString(kanji) {
 		for _, k := range kanji {
-			kscore := kscores[string(k)]
-			if kscore > score {
-				// The word score is equal to the highest kanji score in the word.
-				score = kscore
+			kpts := kptsmap[string(k)]
+			if kpts > pts {
+				// The word pts is equal to the highest kanji pts in the word.
+				pts = kpts
 			}
 		}
 	}
-	return score
+	return pts
 }
 
 /*
@@ -232,7 +230,7 @@ func getKanjiDict() (*jmdict, error) {
 	return &dict, nil
 }
 
-func getKanjiScoreMap() (kmap, error) {
+func getKanjiPtsMap() (kmap, error) {
 	data, err := loadXMLFile(kanjidictFileName)
 	if err != nil {
 		log.Printf("error: %v", err)
@@ -244,21 +242,21 @@ func getKanjiScoreMap() (kmap, error) {
 		log.Printf("error: %v", err)
 		return nil, err
 	}
-	kscores := make(kmap)
+	kptsmap := make(kmap)
 	for _, ch := range kanji.Character {
-		kscores[ch.Literal] = getCharacterScore(ch)
+		kptsmap[ch.Literal] = getCharacterPts(ch)
 	}
-	return kscores, nil
+	return kptsmap, nil
 }
 
-func getCharacterScore(ch character) int {
-	score := ch.Misc.Grade
+func getCharacterPts(ch character) int {
+	pts := ch.Misc.Grade
 	if ch.Misc.JLPT > 0 {
 		// JLPT is in reverse order. Higher level is lower number.
-		score += maxJLPT - ch.Misc.JLPT
+		pts += maxJLPT - ch.Misc.JLPT
 	}
-	// Kanji Score: RawScore / ScoreFactor
-	return score / scoreFactor
+	// Kanji Pts: RawPts / PtsFactor
+	return pts / ptsFactor
 }
 
 func loadXMLFile(filename string) ([]byte, error) {
@@ -272,6 +270,10 @@ func loadXMLFile(filename string) ([]byte, error) {
 		return nil, err
 	}
 	return data, nil
+}
+
+func dropTable(tableDef string) {
+	execDb(fmt.Sprintf("DROP TABLE IF EXISTS %s", tableDef))
 }
 
 func createTable(tableDef string) error {
