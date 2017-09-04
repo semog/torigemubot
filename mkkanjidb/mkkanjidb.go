@@ -31,6 +31,7 @@ var insertcount = 0
 var failcount = 0
 var kanjiExp = regexp.MustCompile(`\p{Han}+`)
 var endsInNExp = regexp.MustCompile(`(ん|ン)$`)
+var katakanaExp = regexp.MustCompile(`(\p{Katakana}|ー)`)
 
 func main() {
 	log.Printf("Loading kanji dictionary...")
@@ -106,15 +107,39 @@ func saveWord(e entry, kptsmap kmap) {
 	seq := fmt.Sprintf("%d", e.Seq)
 	if len(kanjis) > 0 {
 		// Get all of the entry kanji variants
+		hiragana := convertToHiragana(kana)
 		for _, kanji := range kanjis {
-			saveKanji(seq, kanji, kana, endsInN, kptsmap)
+			saveKanji(seq, kanji, hiragana, endsInN, kptsmap)
 		}
 	} else {
 		// Only kana for this entry.
 		for _, kn := range strings.Split(kana, ",") {
-			saveKanji(seq, kn, kn, endsInN, kptsmap)
+			hiragana := convertToHiragana(kn)
+			saveKanji(seq, kn, hiragana, endsInN, kptsmap)
 		}
 	}
+}
+
+func convertToHiragana(kana string) string {
+	prevKana := ""
+	hiragana := ""
+	for _, kn := range []rune(kana) {
+		thisKana := string(kn)
+		if katakanaExp.MatchString(thisKana) {
+			if thisKana == "ー" {
+				// Check to see what vowel the preceding character ends on.
+				// Replace the 'ー' with that hiragana vowel.
+				hiragana += kanaVowelEndingMap[prevKana]
+			} else {
+				hiragana += kanaMap[thisKana]
+			}
+		} else {
+			// No conversion necessary.
+			hiragana += thisKana
+		}
+		prevKana = thisKana
+	}
+	return hiragana
 }
 
 func saveKanji(seq string, kanji string, kana string, endsInN bool, kptsmap kmap) {
