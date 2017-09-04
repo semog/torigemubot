@@ -14,7 +14,8 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-const dbFilename = "shiritoriwords.db"
+const dbFilename = "torigemu.db"
+
 const jmdictFileName = "jmdict.xml"
 const kanjidictFileName = "kanjidic2.xml"
 const maxPts = 15  // Max grade of 10 + Max JLPT of 5
@@ -69,15 +70,13 @@ func createKanjiDb(dict *jmdict, kptsmap kmap) error {
 	}
 	defer stmt.Close()
 	// Optimize the database insertion
-	execDb("PRAGMA synchronous = OFF")
-	execDb("PRAGMA journal_mode = MEMORY")
 	execDb("BEGIN")
-	defer execDb("COMMIT")
 	for _, e := range dict.Entry {
 		if isNoun(e) {
 			saveWord(stmt, e, kptsmap)
 		}
 	}
+	execDb("COMMIT")
 	log.Printf("Inserted %d record(s)", insertcount)
 	log.Printf("Merged %d record(s)", failcount)
 	return nil
