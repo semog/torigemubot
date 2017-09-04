@@ -26,6 +26,7 @@ const maxJLPT = 6
 type kmap map[string]int
 
 var db *sql.DB
+var insertStmt *sql.Stmt
 var insertcount = 0
 var failcount = 0
 var kanjiExp = regexp.MustCompile(`\p{Han}+`)
@@ -59,21 +60,21 @@ func createKanjiDb(dict *jmdict, kptsmap kmap) error {
 		return err
 	}
 	dropTable("words")
-	err = createTable("words (kanji TEXT PRIMARY KEY, kana TEXT, points INT)")
+	err = createTable("words (seq TEXT, kanji TEXT PRIMARY KEY, kana TEXT, points INT)")
 	if err != nil {
 		return err
 	}
 	// Prepare the statement and use a transaction for massive speed increase.
-	stmt, err := db.Prepare("INSERT INTO words (kanji, kana, points) VALUES (:KJ, :KN, :SC)")
+	insertStmt, err = db.Prepare("INSERT INTO words (seq, kanji, kana, points) VALUES (:SQ, :KJ, :KN, :SC)")
 	if err != nil {
 		return err
 	}
-	defer stmt.Close()
+	defer insertStmt.Close()
 	// Optimize the database insertion
 	execDb("BEGIN")
 	for _, e := range dict.Entry {
 		if isNoun(e) {
-			saveWord(stmt, e, kptsmap)
+			saveWord(e, kptsmap)
 		}
 	}
 	execDb("COMMIT")
@@ -99,41 +100,55 @@ func isNoun(e entry) bool {
 	return false
 }
 
-func saveWord(stmt *sql.Stmt, e entry, kptsmap kmap) {
-	var pts int
+func saveWord(e entry, kptsmap kmap) {
 	kana, endsInN := getKana(e)
-	// Get all of the entry kanji variants
-	for _, kanji := range getKanjis(e) {
-		if endsInN {
-			// Automatic zero for ending in 'ん'
-			pts = 0
-		} else {
-			pts = getKanjiWordPts(kanji, kptsmap)
+	kanjis := getKanjis(e)
+	seq := fmt.Sprintf("%d", e.Seq)
+	if len(kanjis) > 0 {
+		// Get all of the entry kanji variants
+		for _, kanji := range kanjis {
+			saveKanji(seq, kanji, kana, endsInN, kptsmap)
 		}
-		_, err := stmt.Exec(sql.Named("KJ", &kanji), sql.Named("KN", &kana), sql.Named("SC", &pts))
-		if err != nil {
-			mergeRecords(kanji, kana, pts)
-			failcount++
-			// return err
-		} else {
-			insertcount++
+	} else {
+		// Only kana for this entry.
+		for _, kn := range strings.Split(kana, ",") {
+			saveKanji(seq, kn, kn, endsInN, kptsmap)
 		}
 	}
 }
 
-func mergeRecords(kanji string, kana string, pts int) {
-	var existingKana string
+func saveKanji(seq string, kanji string, kana string, endsInN bool, kptsmap kmap) {
+	var pts int
+	if endsInN {
+		// Automatic zero for ending in 'ん'
+		pts = 0
+	} else {
+		pts = getKanjiWordPts(kanji, kptsmap)
+	}
+	_, err := insertStmt.Exec(sql.Named("SQ", seq), sql.Named("KJ", &kanji), sql.Named("KN", &kana), sql.Named("SC", &pts))
+	if err != nil {
+		mergeRecords(seq, kanji, kana, pts)
+		failcount++
+		// return err
+	} else {
+		insertcount++
+	}
+}
+
+func mergeRecords(seq string, kanji string, kana string, pts int) {
+	var existingKana, existingSeq string
 	var existingPts int
-	found := queryDb(fmt.Sprintf("SELECT kana, points FROM words WHERE kanji = '%s'", kanji),
-		&existingKana, &existingPts)
+	found := queryDb(fmt.Sprintf("SELECT seq, kana, points FROM words WHERE kanji = '%s'", kanji),
+		&existingSeq, &existingKana, &existingPts)
 	if !found {
 		log.Printf("DBERROR: Could not find record for %s", kanji)
 		return
 	}
 	// Merge kana and the word pts.
+	newSeq := mergeStrings(existingSeq, seq)
 	newKana := mergeStrings(existingKana, kana)
 	newPts := mergePts(existingPts, pts)
-	err := execDb("UPDATE words SET kana = ?, points = ? WHERE kanji = ?", &newKana, &newPts, &kanji)
+	err := execDb("UPDATE words SET seq = ?, kana = ?, points = ? WHERE kanji = ?", &newSeq, &newKana, &newPts, &kanji)
 	if err != nil {
 		log.Printf("DBERROR updating %s", kanji)
 	}
