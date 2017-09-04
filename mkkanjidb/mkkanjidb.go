@@ -85,7 +85,13 @@ func createKanjiDb(dict *jmdict, kptsmap kmap) error {
 func isNoun(e entry) bool {
 	for _, s := range e.Sense {
 		for _, p := range s.Pos {
-			if p == "n" {
+			if p == "n" ||
+				p == "n-adv" ||
+				p == "n-suf" ||
+				p == "n-pref" ||
+				p == "n-t" ||
+				p == "pn" ||
+				p == "n-pr" {
 				return true
 			}
 		}
