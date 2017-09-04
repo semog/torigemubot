@@ -11,12 +11,10 @@ import (
 const usedwordsTableName = "usedwords"
 
 func addEntry(entry *wordEntry) {
-	gamedb.BeginTrans()
 	// Use the timestamp seconds for wordindex.
-	gamedb.CommitOnSuccess(
-		gamedb.Exec(fmt.Sprintf("INSERT INTO %s (chatid, userid, wordindex, word, points) VALUES (?, ?, ?, ?, ?)", usedwordsTableName),
-			entry.chatid, entry.userid, time.Now().Unix(), entry.word, entry.points) &&
-			updatePlayerWords(entry.chatid, entry.userid, 1))
+	gamedb.Exec(fmt.Sprintf("INSERT INTO %s (chatid, userid, wordindex, word, points) VALUES (?, ?, ?, ?, ?)", usedwordsTableName),
+		entry.chatid, entry.userid, time.Now().Unix(), entry.word, entry.points)
+	updatePlayerWords(entry.chatid, entry.userid, 1)
 }
 
 func alreadyUsedWord(chatID int64, theWord string) bool {

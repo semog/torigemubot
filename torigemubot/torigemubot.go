@@ -27,8 +27,8 @@ var torigemubot = botEventHandlers{
 	onMessage:    torigemubotOnMessage,
 }
 
-const challengePenaltyPts = 5
-const lostGamePts = 7
+const challengePenaltyPts = 2
+const lostGamePts = 4
 const stdWordPts = 3
 
 // TODO: Add cleanup of game data from the database if a chat is destroyed, or the bot is kicked out (same thing).
@@ -206,6 +206,8 @@ func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
 		newGame(bot, msg.Chat)
 		return
 	}
+
+	gamedb.BeginTrans()
 	if getNumEntries(chatID) > 0 {
 		updatePlayerScore(chatID, player.userid, entryPts)
 		firstEntry := getFirstEntry(chatID)
@@ -220,12 +222,12 @@ func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
 		// at least one other person goes.
 		entryPts = 0
 	}
-	entry := &wordEntry{
+	addEntry(&wordEntry{
 		chatid: chatID,
 		word:   theWord,
 		userid: player.userid,
-		points: entryPts}
-	addEntry(entry)
+		points: entryPts})
+	gamedb.CommitTrans()
 	// TODO: Display the amount of points won/lost for this word entry.
 	doShowCurrentWord(bot, msg, false)
 }
@@ -285,7 +287,7 @@ func getCurrentWordEntryDisplay(chat *tg.Chat, showUserInfo bool) string {
 		if showUserInfo {
 			wordDisplay = getWordEntryDisplay(chat.ID, entry)
 		} else {
-			wordDisplay = entry.word
+			wordDisplay = fmt.Sprintf("%s 【%d得点】", entry.word, entry.points)
 		}
 
 		entryDisplay = fmt.Sprintf("》%s", wordDisplay)
