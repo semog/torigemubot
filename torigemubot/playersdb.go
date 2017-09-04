@@ -42,7 +42,7 @@ func getPlayerByID(chatID int64, userid int) (*playerEntry, bool) {
 		chatid: chatID,
 		userid: userid,
 	}
-	found := gamedb.query(fmt.Sprintf("SELECT firstname, lastname, username, nickname, score, numwords FROM %s WHERE chatid = %d AND userid = %d",
+	found := gamedb.Query(fmt.Sprintf("SELECT firstname, lastname, username, nickname, score, numwords FROM %s WHERE chatid = %d AND userid = %d",
 		playersTableName, player.chatid, player.userid),
 		&player.firstname, &player.lastname, &player.username, &player.nickname, &player.score, &player.numWords)
 	return player, found
@@ -51,7 +51,7 @@ func getPlayerByID(chatID int64, userid int) (*playerEntry, bool) {
 func getPlayers(chatID int64) []*playerEntry {
 	players := make(playerList, 0)
 	// Sort by score ranking.
-	gamedb.multiQuery(fmt.Sprintf("SELECT userid, firstname, lastname, username, nickname, score, numwords FROM %s WHERE chatid = %d ORDER BY score DESC", playersTableName, chatID),
+	gamedb.MultiQuery(fmt.Sprintf("SELECT userid, firstname, lastname, username, nickname, score, numwords FROM %s WHERE chatid = %d ORDER BY score DESC", playersTableName, chatID),
 		func(rows *sql.Rows) bool {
 			player := &playerEntry{
 				chatid: chatID,
@@ -64,25 +64,25 @@ func getPlayers(chatID int64) []*playerEntry {
 }
 
 func createPlayer(player *playerEntry) bool {
-	return gamedb.exec(fmt.Sprintf("INSERT INTO %s (chatid, userid, firstname, lastname, username, nickname, score, numwords) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", playersTableName),
+	return gamedb.Exec(fmt.Sprintf("INSERT INTO %s (chatid, userid, firstname, lastname, username, nickname, score, numwords) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", playersTableName),
 		player.chatid, player.userid, player.firstname, player.lastname, player.username, player.nickname, player.score, player.numWords)
 }
 
 func savePlayer(player *playerEntry) bool {
-	return gamedb.exec(fmt.Sprintf("UPDATE %s SET firstname = ?, lastname = ?, username = ?, nickname = ?, score = ?, numwords = ? WHERE chatid = ? AND userid = ?", playersTableName),
+	return gamedb.Exec(fmt.Sprintf("UPDATE %s SET firstname = ?, lastname = ?, username = ?, nickname = ?, score = ?, numwords = ? WHERE chatid = ? AND userid = ?", playersTableName),
 		player.firstname, player.lastname, player.username, player.nickname, player.score, player.numWords, player.chatid, player.userid)
 }
 
 func updatePlayerScore(chatID int64, userid int, scoreUpdate int) bool {
-	return gamedb.exec(fmt.Sprintf("UPDATE %s SET score = (SELECT score+%d FROM %s WHERE chatid = %d AND userid = %d) WHERE chatid = %d AND userid = %d",
+	return gamedb.Exec(fmt.Sprintf("UPDATE %s SET score = (SELECT score+%d FROM %s WHERE chatid = %d AND userid = %d) WHERE chatid = %d AND userid = %d",
 		playersTableName, scoreUpdate, playersTableName, chatID, userid, chatID, userid))
 }
 
 func updatePlayerWords(chatID int64, userid int, wordsUpdate int) bool {
-	return gamedb.exec(fmt.Sprintf("UPDATE %s SET numwords = (SELECT numwords+%d FROM %s WHERE chatid = %d AND userid = %d) WHERE chatid = %d AND userid = %d",
+	return gamedb.Exec(fmt.Sprintf("UPDATE %s SET numwords = (SELECT numwords+%d FROM %s WHERE chatid = %d AND userid = %d) WHERE chatid = %d AND userid = %d",
 		playersTableName, wordsUpdate, playersTableName, chatID, userid, chatID, userid))
 }
 
 func nickNameInUse(chatID int64, nickName string) bool {
-	return gamedb.query(fmt.Sprintf("SELECT userid FROM %s WHERE chatid = %d and nickname = '%s'", playersTableName, chatID, nickName))
+	return gamedb.Query(fmt.Sprintf("SELECT userid FROM %s WHERE chatid = %d and nickname = '%s'", playersTableName, chatID, nickName))
 }

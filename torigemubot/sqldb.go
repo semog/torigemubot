@@ -10,41 +10,43 @@ import (
 
 const patchSavePointName = "patchupdate"
 
-type sqldb struct {
+// SQLDb - SQL Database wrapper with extended patching functions.
+type SQLDb struct {
 	db *sql.DB
 }
 
 type patchFuncType struct {
 	// patchid is not necessarily sequential. It just needs to be unique.
 	patchid   int
-	patchFunc func(sdb *sqldb) bool
+	patchFunc func(sdb *SQLDb) bool
 }
 
-func openAndPatchDb(dbFilename string, patchFuncs []patchFuncType) *sqldb {
+// The array of patch functions that will automatically upgrade the database.
+var internalPatchDbFuncs = []patchFuncType{
+	{0, func(sdb *SQLDb) bool {
+		return sdb.CreateTable("version (patchid INTEGER PRIMARY KEY)")
+	}},
+}
+
+// OpenAndPatchDb - Open and Patch a database if necessary.
+func OpenAndPatchDb(dbFilename string, patchFuncs []patchFuncType) *SQLDb {
 	var err error
-	sdb := &sqldb{}
+	sdb := &SQLDb{}
 	sdb.db, err = sql.Open("sqlite3", dbFilename)
 	if err != nil {
 		return nil
 	}
 	// Create the patch tables
-	if !patchDb(sdb, internalPatchDbFuncs) {
+	if !sdb.patch(internalPatchDbFuncs) {
 		return nil
 	}
-	if !patchDb(sdb, patchFuncs) {
+	if !sdb.patch(patchFuncs) {
 		return nil
 	}
 	return sdb
 }
 
-// The array of patch functions that will automatically upgrade the database.
-var internalPatchDbFuncs = []patchFuncType{
-	{0, func(sdb *sqldb) bool {
-		return sdb.createTable("version (patchid INTEGER PRIMARY KEY)")
-	}},
-}
-
-func patchDb(sdb *sqldb, patchFuncs []patchFuncType) bool {
+func (sdb *SQLDb) patch(patchFuncs []patchFuncType) bool {
 	// Currently this patching function does not check to see when it is
 	// finished whether it is running against a _newer_ database. An additional
 	// check would need to be done to see if the final committed patchid matches the
@@ -66,27 +68,31 @@ func patchDb(sdb *sqldb, patchFuncs []patchFuncType) bool {
 	return true
 }
 
-func (sdb *sqldb) beginTrans() {
-	sdb.exec("BEGIN")
+// BeginTrans - Begin transaction
+func (sdb *SQLDb) BeginTrans() {
+	sdb.Exec("BEGIN")
 }
 
-func (sdb *sqldb) commitTrans() {
-	sdb.exec("COMMIT")
+// CommitTrans - Commit transaction
+func (sdb *SQLDb) CommitTrans() {
+	sdb.Exec("COMMIT")
 }
 
-func (sdb *sqldb) rollbackTrans() {
-	sdb.exec("ROLLBACK")
+// RollbackTrans - Rollback transaction
+func (sdb *SQLDb) RollbackTrans() {
+	sdb.Exec("ROLLBACK")
 }
 
-func (sdb *sqldb) commitTransOnSuccess(success bool) {
+// CommitOnSuccess - Commit the transaction if the expression evaluates to true.
+func (sdb *SQLDb) CommitOnSuccess(success bool) {
 	if success {
-		sdb.commitTrans()
+		sdb.CommitTrans()
 	} else {
-		sdb.rollbackTrans()
+		sdb.RollbackTrans()
 	}
 }
 
-func (sdb *sqldb) patched(patchid int) bool {
+func (sdb *SQLDb) patched(patchid int) bool {
 	// Check for the patchid in the version table
 	rows, err := sdb.db.Query(fmt.Sprintf("SELECT patchid FROM version WHERE patchid = %d", patchid))
 	defer closeRows(rows)
@@ -94,37 +100,42 @@ func (sdb *sqldb) patched(patchid int) bool {
 	return err == nil && rows.Next()
 }
 
-func (sdb *sqldb) beginPatch() bool {
-	return sdb.createSavePoint(patchSavePointName)
+func (sdb *SQLDb) beginPatch() bool {
+	return sdb.CreateSavePoint(patchSavePointName)
 }
 
-func (sdb *sqldb) commitPatch(patchid int) bool {
+func (sdb *SQLDb) commitPatch(patchid int) bool {
 	// Add the patchid to the versions table. If it fails, return false.
-	return sdb.exec(fmt.Sprintf("INSERT OR FAIL INTO version (patchid) VALUES (%d)", patchid)) &&
-		sdb.commitSavePoint(patchSavePointName)
+	return sdb.Exec(fmt.Sprintf("INSERT OR FAIL INTO version (patchid) VALUES (%d)", patchid)) &&
+		sdb.CommitSavePoint(patchSavePointName)
 }
 
-func (sdb *sqldb) rollbackPatch() {
-	sdb.rollbackTrans()
+func (sdb *SQLDb) rollbackPatch() {
+	sdb.RollbackTrans()
 }
 
-func (sdb *sqldb) createSavePoint(name string) bool {
-	return sdb.exec(fmt.Sprintf("SAVEPOINT %s", name))
+// CreateSavePoint - Create a save point for rollback or commit.
+func (sdb *SQLDb) CreateSavePoint(name string) bool {
+	return sdb.Exec(fmt.Sprintf("SAVEPOINT %s", name))
 }
 
-func (sdb *sqldb) commitSavePoint(name string) bool {
-	return sdb.exec(fmt.Sprintf("RELEASE SAVEPOINT %s", name))
+// CommitSavePoint - Commit up to the named save point, which rolls it up into parent transaction.
+func (sdb *SQLDb) CommitSavePoint(name string) bool {
+	return sdb.Exec(fmt.Sprintf("RELEASE SAVEPOINT %s", name))
 }
 
-func (sdb *sqldb) createTable(tableDef string) bool {
-	return sdb.exec(fmt.Sprintf("CREATE TABLE %s", tableDef))
+// CreateTable - Create the table definition.
+func (sdb *SQLDb) CreateTable(tableDef string) bool {
+	return sdb.Exec(fmt.Sprintf("CREATE TABLE %s", tableDef))
 }
 
-func (sdb *sqldb) createIndex(indexDef string) bool {
-	return sdb.exec(fmt.Sprintf("CREATE INDEX %s", indexDef))
+// CreateIndex - Create the index definition.
+func (sdb *SQLDb) CreateIndex(indexDef string) bool {
+	return sdb.Exec(fmt.Sprintf("CREATE INDEX %s", indexDef))
 }
 
-func (sdb *sqldb) exec(stmt string, args ...interface{}) bool {
+// Exec - Execute the statement with the bound arguments.
+func (sdb *SQLDb) Exec(stmt string, args ...interface{}) bool {
 	statement, err := sdb.db.Prepare(stmt)
 	if err != nil {
 		log.Printf("DBERROR: Preparing %s: %v", stmt, err)
@@ -137,7 +148,8 @@ func (sdb *sqldb) exec(stmt string, args ...interface{}) bool {
 	return err == nil
 }
 
-func (sdb *sqldb) query(stmt string, args ...interface{}) bool {
+// Query - Query the database, and retrieve the results. Expected single value return.
+func (sdb *SQLDb) Query(stmt string, args ...interface{}) bool {
 	rows, err := sdb.db.Query(stmt)
 	defer closeRows(rows)
 	if err != nil {
@@ -153,7 +165,8 @@ func (sdb *sqldb) query(stmt string, args ...interface{}) bool {
 	return false
 }
 
-func (sdb *sqldb) multiQuery(stmt string, action func(rows *sql.Rows) bool) bool {
+// MultiQuery - Execute a function on the returned query rows.
+func (sdb *SQLDb) MultiQuery(stmt string, action func(rows *sql.Rows) bool) bool {
 	rows, err := sdb.db.Query(stmt)
 	defer closeRows(rows)
 	if err != nil {

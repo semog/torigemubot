@@ -200,7 +200,7 @@ func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
 		return
 	}
 	// Checking word validity is a longer operation, so we do it last.
-	entryPts := getWordPts(theWord)
+	entryPts := getWordPts(theWord, lastentry)
 	if entryPts == 0 {
 		userLostGame(bot, player, fmt.Sprintf("無効言葉: %s", theWord))
 		newGame(bot, msg.Chat)
@@ -210,7 +210,7 @@ func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
 		updatePlayerScore(chatID, player.userid, entryPts)
 		firstEntry := getFirstEntry(chatID)
 		if firstEntry.points == 0 {
-			firstWordPts := getWordPts(firstEntry.word)
+			firstWordPts := getWordPts(firstEntry.word, nil)
 			// Now award the points to the player who went first.
 			updateFirstEntryPoints(chatID, firstWordPts)
 			updatePlayerScore(chatID, firstEntry.userid, firstWordPts)
