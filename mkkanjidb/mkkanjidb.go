@@ -118,6 +118,13 @@ func saveWord(e entry, kptsmap kmap) {
 			saveKanji(seq, kn, hiragana, endsInN, kptsmap)
 		}
 	}
+	// Handle nokanji variations for this entry.
+	nokanjis := getNoKanjis(e)
+	if len(nokanjis) > 0 {
+		for _, nkn := range nokanjis {
+			saveKanji(seq, nkn, convertToHiragana(nkn), endsInNExp.MatchString(nkn), kptsmap)
+		}
+	}
 }
 
 func convertToHiragana(kana string) string {
@@ -238,6 +245,25 @@ func getKanjis(e entry) []string {
 	for _, k := range e.Kele {
 		if len(k.Keb) > 0 {
 			kanjis = append(kanjis, k.Keb)
+		}
+	}
+	return kanjis
+}
+
+/*
+This element, which will usually have a null value, indicates
+that the reb, while associated with the keb, cannot be regarded
+as a true reading of the kanji. It is typically used for words
+such as foreign place names, gairaigo which can be in kanji or
+katakana, etc.
+*/
+func getNoKanjis(e entry) []string {
+	kanjis := make([]string, 0)
+	for _, k := range e.Rele {
+		if k.NoKanji != nil {
+			if len(k.Reb) > 0 {
+				kanjis = append(kanjis, k.Reb)
+			}
 		}
 	}
 	return kanjis

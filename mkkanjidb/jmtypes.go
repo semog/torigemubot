@@ -11,7 +11,7 @@ type kele struct {
 type rele struct {
 	XMLName xml.Name `xml:"r_ele"`
 	Reb     string   `xml:"reb"`
-	NoKanji string   `xml:"re_nokanji"`
+	NoKanji *string  `xml:"re_nokanji"`
 	RestrTo []string `xml:"re_restr"`
 	Rinf    []string `xml:"re_inf"`
 	Rpri    []string `xml:"re_pri"`
