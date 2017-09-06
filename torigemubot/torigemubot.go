@@ -180,7 +180,8 @@ func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
 	chatID := msg.Chat.ID
 	player := getPlayer(chatID, msg.From)
 	lastentry := getLastEntry(msg.Chat.ID)
-	if lastentry != nil {
+	// Private chats don't have to take turns.
+	if lastentry != nil && !msg.Chat.IsPrivate() {
 		if userSubmittedLastWord(msg, lastentry) {
 			bot.Send(tg.NewMessage(chatID, fmt.Sprintf("%s様お待ちください。他の人が最初に行くようにしましょう。\nヽ(^o^)丿", formatPlayerName(player))))
 			doShowCurrentWord(bot, msg, false)
