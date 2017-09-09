@@ -43,12 +43,6 @@ func getLastEntry(chatID int64) *wordEntry {
 	return word
 }
 
-func removeLastEntry(chatID int64) {
-	// The following simplified version is not working with the current library, but works with the command-line client.
-	//execDb(fmt.Sprintf("DELETE FROM %s WHERE chatid = %d ORDER BY wordindex DESC LIMIT 1", usedwordsTableName, chatID))
-	gamedb.Exec(fmt.Sprintf("DELETE FROM %s WHERE chatid = %d and wordindex = (SELECT wordindex from %s WHERE chatid = %d ORDER BY wordindex DESC LIMIT 1)", usedwordsTableName, chatID, usedwordsTableName, chatID))
-}
-
 func updateFirstEntryPoints(chatID int64, wordsUpdate int) bool {
 	// The following simplified version is not working with the current library, but works with the command-line client.
 	// return execDb(fmt.Sprintf("UPDATE %s SET points = %d WHERE chatid = %d ORDER BY wordindex ASC LIMIT 1", usedwordsTableName, wordsUpdate, chatID))

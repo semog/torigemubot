@@ -26,8 +26,7 @@ var torigemubot = botEventHandlers{
 	onMessage:    torigemubotOnMessage,
 }
 
-const challengePenaltyPts = 2
-const lostGamePts = 4
+const lostGamePts = 3
 const stdWordPts = 3
 
 // TODO: Add cleanup of game data from the database if a chat is destroyed, or the bot is kicked out (same thing).
@@ -56,7 +55,6 @@ type wordList []*wordEntry
 
 var newgameCmd,
 	currentCmd,
-	challengeCmd,
 	historyCmd,
 	scoresCmd,
 	nicknameCmd,
@@ -74,7 +72,6 @@ func torigemubotOnInitialize(bot *tg.BotAPI) bool {
 	botname := bot.Self.UserName
 	newgameCmd = regexp.MustCompile(fmt.Sprintf(`(?i)^/?newgame(@%s)?`, botname))
 	currentCmd = regexp.MustCompile(fmt.Sprintf(`(?i)^/?current(@%s)?`, botname))
-	challengeCmd = regexp.MustCompile(fmt.Sprintf(`(?i)^/?challenge(@%s)?`, botname))
 	historyCmd = regexp.MustCompile(fmt.Sprintf(`(?i)^/?history(@%s)?`, botname))
 	scoresCmd = regexp.MustCompile(fmt.Sprintf(`(?i)^/?scores(@%s)?`, botname))
 	nicknameCmd = regexp.MustCompile(fmt.Sprintf(`(?i)^/?nick(@%s)?[ \t]*`, botname))
@@ -97,8 +94,6 @@ func torigemubotOnMessage(bot *tg.BotAPI, msg *tg.Message) bool {
 		doNewGame(bot, msg)
 	case currentCmd.MatchString(msg.Text):
 		doShowCurrentWord(bot, msg, true)
-		//	case challengeCmd.MatchString(msg.Text):
-		//		doChallenge(bot, msg)
 	case historyCmd.MatchString(msg.Text):
 		doShowHistory(bot, msg.Chat.ID)
 	case scoresCmd.MatchString(msg.Text):
@@ -145,32 +140,6 @@ func doShowHistory(bot *tg.BotAPI, chatID int64) {
 		wordHistory += "\n" + getWordEntryDisplay(chatID, entry)
 	}
 	bot.Send(tg.NewMessage(chatID, wordHistory))
-}
-
-func doChallenge(bot *tg.BotAPI, msg *tg.Message) {
-	log.Println("Received challenge command.")
-	entry := getLastEntry(msg.Chat.ID)
-	if entry == nil {
-		bot.Send(tg.NewMessage(msg.Chat.ID, "言葉はありません。"))
-		return
-	}
-
-	// TODO: If two people challenge the word, then remove it. Don't have to wait for original author.
-	if entry.userid == msg.From.ID {
-		// Player is challenging their own word, so remove it.
-		// Remove points for this word. Also add penalty points.
-		updatePlayerScore(msg.Chat.ID, entry.userid, -(entry.points + challengePenaltyPts))
-		updatePlayerWords(msg.Chat.ID, entry.userid, -1)
-		removeLastEntry(msg.Chat.ID)
-		bot.Send(tg.NewMessage(msg.Chat.ID, fmt.Sprintf("%sを消しました", entry.word)))
-		doShowCurrentWord(bot, msg, true)
-	} else {
-		player := getPlayer(msg.Chat.ID, msg.From)
-		// TODO: Check translation
-		bot.Send(tg.NewMessage(msg.Chat.ID,
-			fmt.Sprintf("%sは%sに挑戦します。\n準備をして。。。戦う!!!",
-				formatPlayerName(player), getWordEntryDisplay(msg.Chat.ID, entry))))
-	}
 }
 
 func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
@@ -345,7 +314,7 @@ func formatPlayerName(player *playerEntry) string {
 
 func respondingToCurrentWord(bot *tg.BotAPI, msg *tg.Message, lastentry *wordEntry) bool {
 	if msg.ReplyToMessage == nil {
-		// Must have a reply to message, even in direct chats.
+		// Must have a reply to message.
 		return false
 	}
 	return lastentry.word == kanjiExp.FindString(msg.ReplyToMessage.Text)
