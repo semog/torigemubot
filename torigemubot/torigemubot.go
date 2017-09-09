@@ -14,7 +14,6 @@ Use the /setcommands command and reply with the following list of commands.
 ---------------------
 newgame - Start a new game with a fresh word list.
 current - Show the current word.
-challenge - Challenge the word that was entered.
 history - Show the words that have been used in the game.
 scores - Show the current scores.
 nick - Set your nickname.
@@ -98,8 +97,8 @@ func torigemubotOnMessage(bot *tg.BotAPI, msg *tg.Message) bool {
 		doNewGame(bot, msg)
 	case currentCmd.MatchString(msg.Text):
 		doShowCurrentWord(bot, msg, true)
-	case challengeCmd.MatchString(msg.Text):
-		doChallenge(bot, msg)
+		//	case challengeCmd.MatchString(msg.Text):
+		//		doChallenge(bot, msg)
 	case historyCmd.MatchString(msg.Text):
 		doShowHistory(bot, msg.Chat.ID)
 	case scoresCmd.MatchString(msg.Text):

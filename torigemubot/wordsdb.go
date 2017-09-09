@@ -11,29 +11,73 @@ import (
 
 const wordsTablename = "words"
 const kanaExp = `(\p{Katakana}|\p{Hiragana}|ー)([ゃャょョゅュ])?`
+const seiExp = "なりくせ|せい|さが|しょう"
 
 var wordsdb *sql.DB
 var endKanaExp = regexp.MustCompile(fmt.Sprintf("%s$", kanaExp))
+var endsInKanjiSeiExp = regexp.MustCompile("性$")
+var endsInKanaSeiExp = regexp.MustCompile(fmt.Sprintf("(%s)$", seiExp))
 var beginKanaExp = regexp.MustCompile(fmt.Sprintf("^%s", kanaExp))
 
 func getWordPts(theWord string, lastEntry *wordEntry) int {
-	var kana string
-	var pts int
 	// If points are zero or not found, then return zero. Probably ends in 'n', or not a noun.
-	if !gamedb.Query(fmt.Sprintf("SELECT kana, points FROM %s WHERE kanji = '%s'", wordsTablename, theWord), &kana, &pts) || pts == 0 {
-		return 0
-	}
+	kana, pts := lookupKana(theWord)
 	if lastEntry != nil {
-		var lastEntryKana string
 		// Get kana of current word.
-		// If first kana of new word does not match ending kana of current word, then return zero.
-		if !gamedb.Query(fmt.Sprintf("SELECT kana FROM %s WHERE kanji = '%s'", wordsTablename, lastEntry.word), &lastEntryKana) ||
-			!matchKana(lastEntryKana, kana) {
-			pts = 0
+		lastEntryKana, _ := lookupKana(lastEntry.word)
+		// If first kana of new word does not match ending kana of last word, then return zero.
+		if !matchKana(lastEntryKana, kana) {
+			return 0
 		}
 	}
-	// Return word points.
 	return pts
+}
+
+func lookupKana(theWord string) (string, int) {
+	var kana string
+	var pts int
+	found := gamedb.Query(fmt.Sprintf("SELECT kana, points FROM %s WHERE kanji = '%s'", wordsTablename, theWord), &kana, &pts)
+	if !found || pts == 0 {
+		endsInSei := endsInKanjiSeiExp.MatchString(theWord)
+		if !endsInSei {
+			return "", 0
+		}
+		// Also search for non-dictionary forms of nouns that end in 性.
+		// Remove the ending 性 so we can search on the dictionary form.
+		lookupWord := endsInKanjiSeiExp.ReplaceAllString(theWord, "")
+		kana, pts = lookupKana(lookupWord)
+		if pts == 0 {
+			return "", 0
+		}
+		// Check all of the kana variations to see if at least one of them ends in the correct form.
+		if !endsInKanaSei(kana) {
+			// Need to append the kana variations
+			kana = appendKanaSei(kana)
+		}
+	}
+	return kana, pts
+}
+
+func appendKanaSei(kana string) string {
+	newkana := ""
+	for _, kn := range strings.Split(kana, ",") {
+		for _, sei := range strings.Split(seiExp, "|") {
+			if len(newkana) > 0 {
+				newkana += ","
+			}
+			newkana += fmt.Sprintf("%s%s", kn, sei)
+		}
+	}
+	return newkana
+}
+
+func endsInKanaSei(kana string) bool {
+	for _, kn := range strings.Split(kana, ",") {
+		if endsInKanaSeiExp.MatchString(kn) {
+			return true
+		}
+	}
+	return false
 }
 
 func matchKana(lastWordKana string, newWordKana string) bool {
