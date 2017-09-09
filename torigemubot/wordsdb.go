@@ -40,20 +40,17 @@ func lookupKana(theWord string) (string, int) {
 	if !found || pts == 0 {
 		endsInSei := endsInKanjiSeiExp.MatchString(theWord)
 		if !endsInSei {
-			return "", 0
+			return kana, 0
 		}
 		// Also search for non-dictionary forms of nouns that end in 性.
 		// Remove the ending 性 so we can search on the dictionary form.
 		lookupWord := endsInKanjiSeiExp.ReplaceAllString(theWord, "")
 		kana, pts = lookupKana(lookupWord)
-		if pts == 0 {
-			return "", 0
+		if len(kana) == 0 {
+			return kana, 0
 		}
-		// Check all of the kana variations to see if at least one of them ends in the correct form.
-		if !endsInKanaSei(kana) {
-			// Need to append the kana variations
-			kana = appendKanaSei(kana)
-		}
+		// Need to append the sei kana variations
+		kana = appendKanaSei(kana)
 	}
 	return kana, pts
 }
@@ -61,23 +58,12 @@ func lookupKana(theWord string) (string, int) {
 func appendKanaSei(kana string) string {
 	newkana := ""
 	for _, kn := range strings.Split(kana, ",") {
-		for _, sei := range strings.Split(seiExp, "|") {
-			if len(newkana) > 0 {
-				newkana += ","
-			}
-			newkana += fmt.Sprintf("%s%s", kn, sei)
+		if len(newkana) > 0 {
+			newkana += ","
 		}
+		newkana += fmt.Sprintf("%sせい", kn)
 	}
 	return newkana
-}
-
-func endsInKanaSei(kana string) bool {
-	for _, kn := range strings.Split(kana, ",") {
-		if endsInKanaSeiExp.MatchString(kn) {
-			return true
-		}
-	}
-	return false
 }
 
 func matchKana(lastWordKana string, newWordKana string) bool {

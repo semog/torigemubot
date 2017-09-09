@@ -310,7 +310,7 @@ func userSubmittedLastWord(msg *tg.Message, lastentry *wordEntry) bool {
 
 func userLostGame(bot *tg.BotAPI, player *playerEntry, reason string) {
 	updatePlayerScore(player.chatid, player.userid, -lostGamePts)
-	bot.Send(tg.NewMessage(player.chatid, fmt.Sprintf("❌%sはゲームを負けました！\n%s\n＿|￣|○", formatPlayerName(player), reason)))
+	bot.Send(tg.NewMessage(player.chatid, fmt.Sprintf("❌%s様はゲームを負けました！\n%s\n＿|￣|○", formatPlayerName(player), reason)))
 	doShowScores(bot, player.chatid)
 }
 
