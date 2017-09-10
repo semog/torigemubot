@@ -1,0 +1,9 @@
+[Unit]
+Description = Run the Shiritori Game Telegram Bot
+After = network.target
+
+[Service]
+ExecStart = /usr/local/lib/torigemubot/torigemubotsrv.sh
+
+[Install]
+WantedBy = multi-user.target
