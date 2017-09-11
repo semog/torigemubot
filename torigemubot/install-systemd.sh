@@ -14,8 +14,10 @@ fi
 systemctl --now disable torigemubot.service
 
 cp torigemubot.service $SYSTEMDFOLDER
-cp torigemubot torigemubotsrv.sh $APPFOLDER
-pushd $APPFOLDER
-chmod +x torigemubotsrv.sh torigemubot
-popd
+cp torigemubot $APPFOLDER
+
+if [ ! -e "$DATAFOLDER" ]; then
+	cp torigemubotsrv.sh $APPFOLDER
+fi
+
 systemctl --force enable torigemubot.service
