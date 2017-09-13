@@ -20,4 +20,8 @@ var gamedbPatchFuncs = []patchFuncType{
 			sdb.CreateIndex("usedwordschat_idx ON usedwords (chatid)") &&
 			sdb.CreateIndex("wordcheck_idx ON usedwords (chatid, word)")
 	}},
+	{2, func(sdb *SQLDb) bool {
+		return sdb.CreateTable("customwords (chatid INTEGER, userid INTEGER, kanji TEXT, kana TEXT, points INT)") &&
+			sdb.CreateIndex("customwords_idx ON customwords (chatid, kanji)")
+	}},
 }

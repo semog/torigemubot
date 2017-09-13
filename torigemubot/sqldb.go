@@ -24,7 +24,7 @@ type patchFuncType struct {
 // The array of patch functions that will automatically upgrade the database.
 var internalPatchDbFuncs = []patchFuncType{
 	{0, func(sdb *SQLDb) bool {
-		return sdb.CreateTable("version (patchid INTEGER PRIMARY KEY)")
+		return sdb.CreateTable("IF NOT EXISTS version (patchid INTEGER PRIMARY KEY)")
 	}},
 }
 
@@ -69,27 +69,34 @@ func (sdb *SQLDb) patch(patchFuncs []patchFuncType) bool {
 }
 
 // BeginTrans - Begin transaction
-func (sdb *SQLDb) BeginTrans() {
-	sdb.Exec("BEGIN")
+func (sdb *SQLDb) BeginTrans() bool {
+	return sdb.Exec("BEGIN")
 }
 
 // CommitTrans - Commit transaction
-func (sdb *SQLDb) CommitTrans() {
-	sdb.Exec("COMMIT")
+func (sdb *SQLDb) CommitTrans() bool {
+	return sdb.Exec("COMMIT")
 }
 
 // RollbackTrans - Rollback transaction
-func (sdb *SQLDb) RollbackTrans() {
-	sdb.Exec("ROLLBACK")
+func (sdb *SQLDb) RollbackTrans() bool {
+	return sdb.Exec("ROLLBACK")
 }
 
 // CommitOnSuccess - Commit the transaction if the expression evaluates to true.
-func (sdb *SQLDb) CommitOnSuccess(success bool) {
+func (sdb *SQLDb) CommitOnSuccess(success bool) bool {
 	if success {
-		sdb.CommitTrans()
-	} else {
-		sdb.RollbackTrans()
+		return sdb.CommitTrans()
 	}
+	return sdb.RollbackTrans()
+}
+
+// CommitSavePointOnSuccess - Commit up to the save point (or merge with parent transaction) if the expression evaluates to true.
+func (sdb *SQLDb) CommitSavePointOnSuccess(name string, success bool) bool {
+	if success {
+		return sdb.CommitSavePoint(name)
+	}
+	return sdb.RollbackSavePoint(name)
 }
 
 func (sdb *SQLDb) patched(patchid int) bool {
@@ -122,6 +129,11 @@ func (sdb *SQLDb) CreateSavePoint(name string) bool {
 // CommitSavePoint - Commit up to the named save point, which rolls it up into parent transaction.
 func (sdb *SQLDb) CommitSavePoint(name string) bool {
 	return sdb.Exec(fmt.Sprintf("RELEASE SAVEPOINT %s", name))
+}
+
+// RollbackSavePoint - Rollback a save point
+func (sdb *SQLDb) RollbackSavePoint(name string) bool {
+	return sdb.Exec(fmt.Sprintf("ROLLBACK TO SAVEPOINT %s", name)) && sdb.CommitSavePoint(name)
 }
 
 // CreateTable - Create the table definition.

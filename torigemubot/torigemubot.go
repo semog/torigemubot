@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"regexp"
+	"strings"
 
 	tg "github.com/go-telegram-bot-api/telegram-bot-api"
 )
@@ -17,6 +18,8 @@ current - Show the current word.
 history - Show the words that have been used in the game.
 scores - Show the current scores.
 nick - Set your nickname.
+add - Add a custom word to this group's game.
+remove - Remove a custom word from this group's game.
 help - Display game rules and other instructions.
 */
 
@@ -28,6 +31,7 @@ var torigemubot = botEventHandlers{
 
 const lostGamePts = 3
 const stdWordPts = 3
+const addWordPts = 1
 
 // TODO: Add cleanup of game data from the database if a chat is destroyed, or the bot is kicked out (same thing).
 
@@ -60,8 +64,12 @@ var newgameCmd,
 	nicknameCmd,
 	helpCmd,
 	shutdownCmd,
-	basicCmd,
-	kanjiExp *regexp.Regexp
+	addCmd,
+	removeCmd *regexp.Regexp
+var basicCmd = regexp.MustCompile(`(?i)^/`)
+var kanjiExp = regexp.MustCompile(`(\p{Han}|\p{Katakana}|\p{Hiragana}|ー)+`)
+var addCustomWordExp = regexp.MustCompile(`(?i)([\p{Han}|\p{Katakana}|\p{Hiragana}|ー]+)[ 　\t]+([\p{Hiragana}|,|、]+)`)
+var removeCustomWordExp = regexp.MustCompile(`(?i)([\p{Han}|\p{Katakana}|\p{Hiragana}|ー]+)`)
 
 // Initialize global data
 func torigemubotOnInitialize(bot *tg.BotAPI) bool {
@@ -74,11 +82,11 @@ func torigemubotOnInitialize(bot *tg.BotAPI) bool {
 	currentCmd = regexp.MustCompile(fmt.Sprintf(`(?i)^/?current(@%s)?`, botname))
 	historyCmd = regexp.MustCompile(fmt.Sprintf(`(?i)^/?history(@%s)?`, botname))
 	scoresCmd = regexp.MustCompile(fmt.Sprintf(`(?i)^/?scores(@%s)?`, botname))
-	nicknameCmd = regexp.MustCompile(fmt.Sprintf(`(?i)^/?nick(@%s)?[ \t]*`, botname))
+	nicknameCmd = regexp.MustCompile(fmt.Sprintf(`(?i)^/?nick(@%s)?[ 　\t]*`, botname))
 	helpCmd = regexp.MustCompile(fmt.Sprintf(`(?i)^/?help(@%s)?`, botname))
+	addCmd = regexp.MustCompile(fmt.Sprintf(`(?i)^/?add(@%s)?[ 　\t]*`, botname))
+	removeCmd = regexp.MustCompile(fmt.Sprintf(`(?i)^/?remove(@%s)?[ 　\t]*`, botname))
 	shutdownCmd = regexp.MustCompile(fmt.Sprintf(`(?i)^/?shutdown(@%s)?[ \t]+now`, botname))
-	basicCmd = regexp.MustCompile(`(?i)^/`)
-	kanjiExp = regexp.MustCompile(`(\p{Han}|\p{Katakana}|\p{Hiragana}|ー)+`)
 	return true
 }
 
@@ -90,6 +98,8 @@ func torigemubotOnMessage(bot *tg.BotAPI, msg *tg.Message) bool {
 	log.Printf("MsgFrom: Chat %s, User %s %s (%s): %s",
 		formatChatName(msg.Chat), msg.From.FirstName, msg.From.LastName, msg.From.UserName, msg.Text)
 	switch {
+	case !basicCmd.MatchString(msg.Text) && len(msg.Text) > 0:
+		doWordEntry(bot, msg)
 	case newgameCmd.MatchString(msg.Text):
 		doNewGame(bot, msg)
 	case currentCmd.MatchString(msg.Text):
@@ -100,14 +110,15 @@ func torigemubotOnMessage(bot *tg.BotAPI, msg *tg.Message) bool {
 		doShowScores(bot, msg.Chat.ID)
 	case nicknameCmd.MatchString(msg.Text):
 		doSetNickname(bot, msg, nicknameCmd.ReplaceAllString(msg.Text, ""))
+	case addCmd.MatchString(msg.Text):
+		doAddWord(bot, msg, addCmd.ReplaceAllString(msg.Text, ""))
+	case removeCmd.MatchString(msg.Text):
+		doRemoveWord(bot, msg, removeCmd.ReplaceAllString(msg.Text, ""))
 	case helpCmd.MatchString(msg.Text):
 		doHelp(bot, msg)
 	case shutdownCmd.MatchString(msg.Text):
 		doShutdown(bot, msg)
 		return false
-	// Don't add a word that was a command attempt.
-	case !basicCmd.MatchString(msg.Text) && len(msg.Text) > 0:
-		doWordEntry(bot, msg)
 	}
 	return true
 }
@@ -169,7 +180,7 @@ func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
 		return
 	}
 	// Checking word validity is a longer operation, so we do it last.
-	entryPts := getWordPts(theWord, lastentry)
+	entryPts := getWordPts(chatID, theWord, lastentry)
 	if entryPts == 0 {
 		userLostGame(bot, player, fmt.Sprintf("無効言葉: %s", theWord))
 		newGame(bot, msg.Chat)
@@ -181,7 +192,7 @@ func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
 		updatePlayerScore(chatID, player.userid, entryPts)
 		firstEntry := getFirstEntry(chatID)
 		if firstEntry.points == 0 {
-			firstWordPts := getWordPts(firstEntry.word, nil)
+			firstWordPts := getWordPts(chatID, firstEntry.word, nil)
 			// Now award the points to the player who went first.
 			updateFirstEntryPoints(chatID, firstWordPts)
 			updatePlayerScore(chatID, firstEntry.userid, firstWordPts)
@@ -219,6 +230,48 @@ func doSetNickname(bot *tg.BotAPI, msg *tg.Message, newNickname string) {
 	}
 }
 
+// First parameter is the kanji, second parameter is hiragana pronunciation (can be comma-separated list of multiple pronunciations).
+func doAddWord(bot *tg.BotAPI, msg *tg.Message, wordVal string) {
+	// Extract the kanji and kana definitions for this custom word.
+	customWord := addCustomWordExp.FindStringSubmatch(wordVal)
+	if len(customWord) != 3 {
+		reply := tg.NewMessage(msg.Chat.ID, "Missing kanji and hiragana pronunciation.")
+		reply.ReplyToMessageID = msg.MessageID
+		bot.Send(reply)
+		return
+	}
+	// Replace any hirigana commas with regular commas
+	kanji := customWord[1]
+	kana := strings.Replace(customWord[2], "、", ",", -1)
+	if !addCustomWord(msg.Chat.ID, msg.From.ID, kanji, kana) {
+		reply := tg.NewMessage(msg.Chat.ID, fmt.Sprintf("Could not add %s「%s」.", kanji, kana))
+		reply.ReplyToMessageID = msg.MessageID
+		bot.Send(reply)
+		return
+	}
+	reply := tg.NewMessage(msg.Chat.ID, fmt.Sprintf("Added %s「%s」. More points for you.", kanji, kana))
+	reply.ReplyToMessageID = msg.MessageID
+	bot.Send(reply)
+}
+
+func doRemoveWord(bot *tg.BotAPI, msg *tg.Message, wordVal string) {
+	// Extract the kanji to be removed.
+	customWord := addCustomWordExp.FindStringSubmatch(wordVal)
+	if len(customWord) != 1 {
+		return
+	}
+	kanji := customWord[0]
+	if !removeCustomWord(msg.Chat.ID, kanji) {
+		reply := tg.NewMessage(msg.Chat.ID, fmt.Sprintf("Could not remove %s.", kanji))
+		reply.ReplyToMessageID = msg.MessageID
+		bot.Send(reply)
+		return
+	}
+	reply := tg.NewMessage(msg.Chat.ID, fmt.Sprintf("Removed %s.", kanji))
+	reply.ReplyToMessageID = msg.MessageID
+	bot.Send(reply)
+}
+
 func doHelp(bot *tg.BotAPI, msg *tg.Message) {
 	log.Println("Received help command.")
 	bot.Send(tg.NewMessage(msg.Chat.ID,
@@ -230,6 +283,9 @@ func doHelp(bot *tg.BotAPI, msg *tg.Message) {
 ④ Words may not be repeated.
 ⑤ Phrases connected by no 「の」 are permitted, but only in those cases where the phrase is sufficiently fossilized to be considered a "word".
 ⑥ When a word ends in a small kana, such as 「じてんしゃ」 (bicycle), continue with the しゃ combination, such as 「しゃこ」 (garage).
+⑦ If the word is katakana and ends in ー, then start with the vowel sound that it is extending. For example:
+      マスター, next word should start with あ.
+      ルビー, next word should start with い.
 
 Example: sakura 「さくら」 → rajio 「ラジオ」 → onigiri 「おにぎり」 → risu 「りす」 → sumou 「すもう」 → udon 「うどん」
 
