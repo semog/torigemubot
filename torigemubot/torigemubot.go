@@ -162,14 +162,12 @@ func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
 	// Private chats don't have to take turns.
 	if lastentry != nil && !msg.Chat.IsPrivate() {
 		if userSubmittedLastWord(msg, lastentry) {
-			bot.Send(tg.NewMessage(chatID, fmt.Sprintf("%s様お待ちください。他の人が最初に行くようにしましょう。\nヽ(^o^)丿", formatPlayerName(player))))
+			bot.Send(tg.NewMessage(chatID, fmt.Sprintf("%s様お待ち下さい。他の人が最初に行くようにしましょう。\nヽ(^o^)丿", formatPlayerName(player))))
 			doShowCurrentWord(bot, msg, false)
 			return
 		}
 		if !respondingToCurrentWord(bot, msg, lastentry) {
-			replyMsg := tg.NewMessage(chatID, fmt.Sprintf("ヽ(^o^)丿\n%s様は遅いです。\n現在の言葉は：", formatPlayerName(player)))
-			replyMsg.ReplyToMessageID = msg.MessageID
-			bot.Send(replyMsg)
+			sendReplyMsg(bot, msg, fmt.Sprintf("ヽ(^o^)丿\n%s様は遅いです。\n現在の言葉は：", formatPlayerName(player)))
 			doShowCurrentWord(bot, msg, true)
 			return
 		}
@@ -213,16 +211,13 @@ func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
 }
 
 func doSetNickname(bot *tg.BotAPI, msg *tg.Message, newNickname string) {
+	log.Println("Received set nickname command.")
 	player := getPlayer(msg.Chat.ID, msg.From)
 	oldName := formatPlayerName(player)
 	if oldName == newNickname {
-		reply := tg.NewMessage(msg.Chat.ID, "新しい名前を入力して下さい。\n(^_^)/")
-		reply.ReplyToMessageID = msg.MessageID
-		bot.Send(reply)
+		sendReplyMsg(bot, msg, "新しい名前を入力して下さい。\n(^_^)/")
 	} else if nickNameInUse(msg.Chat.ID, newNickname) {
-		reply := tg.NewMessage(msg.Chat.ID, "その名前は取られます。\nm(_ _)m")
-		reply.ReplyToMessageID = msg.MessageID
-		bot.Send(reply)
+		sendReplyMsg(bot, msg, "その名前は取られます。\nm(_ _)m")
 	} else {
 		player.nickname = newNickname
 		savePlayer(player)
@@ -232,44 +227,46 @@ func doSetNickname(bot *tg.BotAPI, msg *tg.Message, newNickname string) {
 
 // First parameter is the kanji, second parameter is hiragana pronunciation (can be comma-separated list of multiple pronunciations).
 func doAddWord(bot *tg.BotAPI, msg *tg.Message, wordVal string) {
+	log.Println("Received add custom word command.")
 	// Extract the kanji and kana definitions for this custom word.
 	customWord := addCustomWordExp.FindStringSubmatch(wordVal)
-	if len(customWord) != 3 {
-		reply := tg.NewMessage(msg.Chat.ID, "Missing kanji and hiragana pronunciation.")
-		reply.ReplyToMessageID = msg.MessageID
-		bot.Send(reply)
+	if len(customWord) < 3 {
+		sendReplyMsg(bot, msg, "❌誤りです。漢字とひらがながありません。")
 		return
 	}
 	// Replace any hirigana commas with regular commas
 	kanji := customWord[1]
 	kana := strings.Replace(customWord[2], "、", ",", -1)
-	if !addCustomWord(msg.Chat.ID, msg.From.ID, kanji, kana) {
-		reply := tg.NewMessage(msg.Chat.ID, fmt.Sprintf("Could not add %s「%s」.", kanji, kana))
-		reply.ReplyToMessageID = msg.MessageID
-		bot.Send(reply)
+	if endsInN(kana) {
+		sendReplyMsg(bot, msg, fmt.Sprintf("❌誤りです。無効言葉: %s「%s」。言葉はんを終わることができない。", kanji, kana))
 		return
 	}
-	reply := tg.NewMessage(msg.Chat.ID, fmt.Sprintf("Added %s「%s」. More points for you.", kanji, kana))
-	reply.ReplyToMessageID = msg.MessageID
-	bot.Send(reply)
+	wordExists, _, _ := lookupStandardKana(msg.Chat.ID, kanji)
+	if wordExists {
+		sendReplyMsg(bot, msg, fmt.Sprintf("❌言葉は既に存在します：　%s「%s」。", kanji, kana))
+		return
+	}
+	if !addCustomWord(msg.Chat.ID, msg.From.ID, kanji, kana) {
+		sendReplyMsg(bot, msg, fmt.Sprintf("❌誤りです。言葉を追加できませんでした：　%s「%s」。", kanji, kana))
+		return
+	}
+	sendReplyMsg(bot, msg, fmt.Sprintf("追加された言葉：　%s「%s」。ありがとうございました！", kanji, kana))
 }
 
 func doRemoveWord(bot *tg.BotAPI, msg *tg.Message, wordVal string) {
+	log.Println("Received remove custom word command.")
 	// Extract the kanji to be removed.
-	customWord := addCustomWordExp.FindStringSubmatch(wordVal)
-	if len(customWord) != 1 {
+	customWord := removeCustomWordExp.FindStringSubmatch(wordVal)
+	if len(customWord) < 2 {
+		sendReplyMsg(bot, msg, "❌誤りです。漢字がありません。")
 		return
 	}
 	kanji := customWord[0]
 	if !removeCustomWord(msg.Chat.ID, kanji) {
-		reply := tg.NewMessage(msg.Chat.ID, fmt.Sprintf("Could not remove %s.", kanji))
-		reply.ReplyToMessageID = msg.MessageID
-		bot.Send(reply)
+		sendReplyMsg(bot, msg, fmt.Sprintf("言葉を削除できませんでした：　%s.", kanji))
 		return
 	}
-	reply := tg.NewMessage(msg.Chat.ID, fmt.Sprintf("Removed %s.", kanji))
-	reply.ReplyToMessageID = msg.MessageID
-	bot.Send(reply)
+	sendReplyMsg(bot, msg, fmt.Sprintf("削除された：　%s.", kanji))
 }
 
 func doHelp(bot *tg.BotAPI, msg *tg.Message) {
@@ -295,6 +292,12 @@ The player who used the word udon lost this game.`))
 func doShutdown(bot *tg.BotAPI, msg *tg.Message) {
 	log.Println("Received shutdown command.")
 	bot.Send(tg.NewMessage(msg.Chat.ID, "シャットダウン。。。"))
+}
+
+func sendReplyMsg(bot *tg.BotAPI, msg *tg.Message, message string) {
+	reply := tg.NewMessage(msg.Chat.ID, message)
+	reply.ReplyToMessageID = msg.MessageID
+	bot.Send(reply)
 }
 
 func newGame(bot *tg.BotAPI, chat *tg.Chat) {
