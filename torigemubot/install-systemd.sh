@@ -1,23 +1,19 @@
 #!/bin/bash
-DATAFOLDER=/usr/local/share/appdata/torigemubot/
-APPFOLDER=/usr/local/lib/torigemubot/
-SYSTEMDFOLDER=/etc/systemd/system/
+DATAFOLDER=/usr/local/share/appdata/torigemubot
+APPFOLDER=/usr/local/lib/torigemubot
+SYSTEMDFOLDER=/etc/systemd/system
 
-if [ ! -d "$DATAFOLDER" ]; then
-	mkdir -p $DATAFOLDER
-fi
-
-if [ ! -d "$APPFOLDER" ]; then
-	mkdir -p $APPFOLDER
-fi
+mkdir -p $DATAFOLDER/
+mkdir -p $APPFOLDER/
 
 systemctl --now disable torigemubot.service
 
-cp torigemubot.service $SYSTEMDFOLDER
-cp torigemubot $APPFOLDER
+cp torigemubot.service $SYSTEMDFOLDER/
+cp torigemubot $APPFOLDER/
 
-if [ ! -e "$DATAFOLDER" ]; then
-	cp torigemubotsrv.sh $APPFOLDER
+if [ ! -e "$APPFOLDER/torigemubotsrv.sh" ]; then
+	cp torigemubotsrv.sh $APPFOLDER/
 fi
 
 systemctl --force enable torigemubot.service
+systemctl start torigemubot.service
