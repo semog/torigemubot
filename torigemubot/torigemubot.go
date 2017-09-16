@@ -148,7 +148,7 @@ func doShowHistory(bot *tg.BotAPI, chatID int64) {
 	log.Println("Received showhistory command.")
 	wordHistory := "使用された言葉\n＿＿＿＿＿＿＿＿＿＿＿"
 	for _, entry := range getWordHistory(chatID) {
-		wordHistory += "\n" + getWordEntryDisplay(chatID, entry)
+		wordHistory += "\n" + getWordEntryDisplay(chatID, entry, true)
 	}
 	bot.Send(tg.NewMessage(chatID, wordHistory))
 }
@@ -311,25 +311,28 @@ func getCurrentWordEntryDisplay(chat *tg.Chat, showUserInfo bool) string {
 	if entry == nil {
 		entryDisplay = "現在の言葉はありません。"
 	} else {
-		var wordDisplay string
-		if showUserInfo {
-			wordDisplay = getWordEntryDisplay(chat.ID, entry)
-		} else {
-			wordDisplay = fmt.Sprintf("%s 【%d得点】", entry.word, entry.points)
-		}
-
-		entryDisplay = fmt.Sprintf("》%s", wordDisplay)
+		entryDisplay = fmt.Sprintf("》%s", getWordEntryDisplay(chat.ID, entry, showUserInfo))
 	}
 	return entryDisplay
 }
 
-func getWordEntryDisplay(chatID int64, entry *wordEntry) string {
+func getWordEntryDisplay(chatID int64, entry *wordEntry, showUserInfo bool) string {
+	playername := ""
 	bonus := ""
-	if entry.points > stdWordPts {
-		bonus = "★ "
+	pts := entry.points
+	if pts == 0 {
+		// The points haven't been awarded yet, so we calc them and flag the entry.
+		pts = calcWordPoints(entry.word)
+		bonus += "★"
 	}
-	player, _ := getPlayerByID(chatID, entry.userid)
-	return fmt.Sprintf("%s 【%d得点】%s「%s」", entry.word, entry.points, bonus, formatPlayerName(player))
+	if pts > stdWordPts {
+		bonus += "✨"
+	}
+	if showUserInfo {
+		player, _ := getPlayerByID(chatID, entry.userid)
+		playername = fmt.Sprintf("「%s」", formatPlayerName(player))
+	}
+	return fmt.Sprintf("%s【%d得点】%s%s", entry.word, pts, bonus, playername)
 }
 
 func userSubmittedLastWord(msg *tg.Message, lastentry *wordEntry) bool {
