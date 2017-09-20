@@ -21,27 +21,34 @@ var endKanaExp = regexp.MustCompile(fmt.Sprintf("%s$", kanaExp))
 var beginKanaExp = regexp.MustCompile(fmt.Sprintf("^%s", kanaExp))
 var endsInNExp = regexp.MustCompile(`(ん|ン)$`)
 
-func getWordPts(chatID int64, theWord string, lastEntry *wordEntry) int {
+func getWordPts(chatID int64, theWord string, lastEntry *wordEntry) (int, string) {
 	// If points are zero or not found, then return zero. Probably ends in 'n', or not a noun.
 	kana, pts := lookupKana(chatID, theWord)
 	if lastEntry != nil {
-		// Get kana of current word.
+		// Get kana of last word.
 		lastEntryKana, _ := lookupKana(chatID, lastEntry.word)
 		// If first kana of new word does not match ending kana of last word, then return zero.
 		if !matchKana(lastEntryKana, kana) {
-			return 0
+			return 0, fmt.Sprintf("初めの仮名は終わりのかなと一致しません: %s「%s」-> %s「%s」", lastEntry.word, lastEntryKana, theWord, kana)
 		}
+	} else if pts == 0 {
+		if endsInN(kana) {
+			return pts, fmt.Sprintf("言葉は'ん'が終わることが禁止されています: %s", theWord)
+		}
+		return pts, fmt.Sprintf("無効言葉: %s", theWord)
 	}
-	return pts
+	return pts, ""
 }
 
 func lookupKana(chatID int64, theWord string) (string, int) {
 	found, kana, pts := lookupStandardKana(chatID, theWord)
 	if !found || pts == 0 {
-		found, kana, pts = lookupCustomKana(chatID, theWord)
+		var customkana string
+		found, customkana, pts = lookupCustomKana(chatID, theWord)
 		if !found {
 			return kana, 0
 		}
+		kana = customkana
 	}
 	return kana, pts
 }

@@ -172,32 +172,38 @@ func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
 			return
 		}
 	}
+
+	// Even if the second word is invalid, the first word points need to be applied.
+	gamedb.BeginTrans()
+	defer gamedb.CommitTrans()
+	// If the first word, then no points awarded until at least one other person goes.
+	firstword := true
+	firstEntry := getFirstEntry(chatID)
+	if firstEntry != nil {
+		firstword = false
+		if firstEntry.points == 0 {
+			firstWordPts, _ := getWordPts(chatID, firstEntry.word, nil)
+			// Now award the points to the player who went first.
+			updateFirstEntryPoints(chatID, firstWordPts)
+			updatePlayerScore(chatID, firstEntry.userid, firstWordPts)
+		}
+	}
 	if alreadyUsedWord(chatID, theWord) {
 		userLostGame(bot, player, fmt.Sprintf("すでに使用されている言葉: %s", theWord))
 		newGame(bot, msg.Chat)
 		return
 	}
 	// Checking word validity is a longer operation, so we do it last.
-	entryPts := getWordPts(chatID, theWord, lastentry)
+	entryPts, ptsMsg := getWordPts(chatID, theWord, lastentry)
 	if entryPts == 0 {
-		userLostGame(bot, player, fmt.Sprintf("無効言葉: %s", theWord))
+		userLostGame(bot, player, ptsMsg)
 		newGame(bot, msg.Chat)
 		return
 	}
 
-	gamedb.BeginTrans()
-	if getNumEntries(chatID) > 0 {
+	if !firstword {
 		updatePlayerScore(chatID, player.userid, entryPts)
-		firstEntry := getFirstEntry(chatID)
-		if firstEntry.points == 0 {
-			firstWordPts := getWordPts(chatID, firstEntry.word, nil)
-			// Now award the points to the player who went first.
-			updateFirstEntryPoints(chatID, firstWordPts)
-			updatePlayerScore(chatID, firstEntry.userid, firstWordPts)
-		}
 	} else {
-		// If the first word, then no points awarded until
-		// at least one other person goes.
 		entryPts = 0
 	}
 	addEntry(&wordEntry{
@@ -205,8 +211,6 @@ func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
 		word:   theWord,
 		userid: player.userid,
 		points: entryPts})
-	gamedb.CommitTrans()
-	// TODO: Display the amount of points won/lost for this word entry.
 	doShowCurrentWord(bot, msg, false)
 }
 
