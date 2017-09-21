@@ -24,7 +24,7 @@ var endsInNExp = regexp.MustCompile(`(ん|ン)$`)
 func getWordPts(chatID int64, theWord string, lastEntry *wordEntry) (int, string) {
 	// If points are zero or not found, then return zero. Probably ends in 'n', or not a noun.
 	kana, pts := lookupKana(chatID, theWord)
-	if lastEntry != nil {
+	if lastEntry != nil && pts != 0 {
 		// Get kana of last word.
 		lastEntryKana, _ := lookupKana(chatID, lastEntry.word)
 		// If first kana of new word does not match ending kana of last word, then return zero.
@@ -86,6 +86,9 @@ func endAndBeginMatch(endingMatch []string, beginningMatch []string) bool {
 	// next word must begin with that same combination.
 	// However, if the word ends in just し, then the next word can
 	// optionally start with combined phonic (i.e., しゃ) or just し.
+	if len(beginningMatch) < len(endingMatch) {
+		return false
+	}
 	for index := 1; index < len(endingMatch); index++ {
 		if len(endingMatch[index]) > 0 && endingMatch[index] != beginningMatch[index] {
 			return false
