@@ -82,11 +82,12 @@ func matchKana(lastWordKana string, newWordKana string) bool {
 }
 
 func endAndBeginMatch(endingMatch []string, beginningMatch []string) bool {
-	if len(endingMatch) != len(beginningMatch) {
-		return false
-	}
-	for index := range endingMatch {
-		if endingMatch[index] != beginningMatch[index] {
+	// If the word ends in a combined phonic (i.e., しゃ), then the
+	// next word must begin with that same combination.
+	// However, if the word ends in just し, then the next word can
+	// optionally start with combined phonic (i.e., しゃ) or just し.
+	for index := 1; index < len(endingMatch); index++ {
+		if len(endingMatch[index]) > 0 && endingMatch[index] != beginningMatch[index] {
 			return false
 		}
 	}
