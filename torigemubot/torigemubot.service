@@ -4,6 +4,7 @@ After = network.target
 
 [Service]
 ExecStart = /usr/local/lib/torigemubot/torigemubotsrv.sh
+Restart=always
 
 [Install]
 WantedBy = multi-user.target
