@@ -13,7 +13,6 @@ import (
 Following is the command menu for constructing the bot with @BotFather.
 Use the /setcommands command and reply with the following list of commands.
 ---------------------
-newgame - Start a new game with a fresh word list.
 current - Show the current word.
 history - Show the words that have been used in the game.
 scores - Show the current scores.
@@ -30,8 +29,9 @@ var torigemubot = botEventHandlers{
 }
 
 const lostGamePts = 3
-const stdWordPts = 3
 const addWordPts = 1
+
+const newGamePrompt = "始める新しい単語を入力して下さい。"
 
 // TODO: Add cleanup of game data from the database if a chat is destroyed, or the bot is kicked out (same thing).
 
@@ -101,7 +101,8 @@ func torigemubotOnMessage(bot *tg.BotAPI, msg *tg.Message) bool {
 	case !basicCmd.MatchString(msg.Text) && len(msg.Text) > 0:
 		doWordEntry(bot, msg)
 	case newgameCmd.MatchString(msg.Text):
-		doNewGame(bot, msg)
+		// TODO: New game is deprecated. A game is always active. Remove this command entirely.
+		doShowCurrentWord(bot, msg, true)
 	case currentCmd.MatchString(msg.Text):
 		doShowCurrentWord(bot, msg, true)
 	case historyCmd.MatchString(msg.Text):
@@ -121,14 +122,6 @@ func torigemubotOnMessage(bot *tg.BotAPI, msg *tg.Message) bool {
 		return false
 	}
 	return true
-}
-
-func doNewGame(bot *tg.BotAPI, msg *tg.Message) {
-	log.Println("Received newgame command.")
-	// TODO: Add some safety checks so that one other person must agree. Give a lazy consensus time.
-	// If no one objects within 1 minute, then the game starts new. If someone agrees, it starts new right away.
-	// If someone objects, then the reset is canceled.
-	newGame(bot, msg.Chat)
 }
 
 func doShowCurrentWord(bot *tg.BotAPI, msg *tg.Message, showUserInfo bool) {
@@ -306,14 +299,14 @@ func sendReplyMsg(bot *tg.BotAPI, msg *tg.Message, message string) {
 
 func newGame(bot *tg.BotAPI, chat *tg.Chat) {
 	clearWordHistory(chat.ID)
-	bot.Send(tg.NewMessage(chat.ID, "新しいゲームを開始します。\n誰が最初に行きたいですか？\n(^_^)/"))
+	bot.Send(tg.NewMessage(chat.ID, fmt.Sprintf("新しいゲームを開始します。\n%s\n(^_^)/", newGamePrompt)))
 }
 
 func getCurrentWordEntryDisplay(chat *tg.Chat, showUserInfo bool) string {
 	var entryDisplay string
 	entry := getLastEntry(chat.ID)
 	if entry == nil {
-		entryDisplay = "現在の言葉はありません。"
+		entryDisplay = newGamePrompt
 	} else {
 		entryDisplay = fmt.Sprintf("》%s", getWordEntryDisplay(chat.ID, entry, showUserInfo))
 	}
@@ -329,9 +322,6 @@ func getWordEntryDisplay(chatID int64, entry *wordEntry, showUserInfo bool) stri
 		pts = calcWordPoints(entry.word)
 		bonus += "★"
 	}
-	if pts > stdWordPts {
-		bonus += "✨"
-	}
 	if showUserInfo {
 		player, _ := getPlayerByID(chatID, entry.userid)
 		playername = fmt.Sprintf("「%s」", formatPlayerName(player))
@@ -346,7 +336,6 @@ func userSubmittedLastWord(msg *tg.Message, lastentry *wordEntry) bool {
 func userLostGame(bot *tg.BotAPI, player *playerEntry, reason string) {
 	updatePlayerScore(player.chatid, player.userid, -lostGamePts)
 	bot.Send(tg.NewMessage(player.chatid, fmt.Sprintf("❌%s様はゲームを負けました！\n%s\n＿|￣|○", formatPlayerName(player), reason)))
-	doShowScores(bot, player.chatid)
 }
 
 func formatChatName(chat *tg.Chat) string {
