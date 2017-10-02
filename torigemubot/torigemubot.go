@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	tg "github.com/go-telegram-bot-api/telegram-bot-api"
+	tg "github.com/semog/telegram-bot-api"
 )
 
 /*
@@ -22,10 +22,10 @@ remove - Remove a custom word from this group's game.
 help - Display game rules and other instructions.
 */
 
-var torigemubot = botEventHandlers{
-	onInitialize: torigemubotOnInitialize,
-	onDispose:    torigemubotOnDispose,
-	onMessage:    torigemubotOnMessage,
+var torigemubot = tg.BotEventHandlers{
+	OnInitialize: torigemubotOnInitialize,
+	OnDispose:    torigemubotOnDispose,
+	OnMessage:    torigemubotOnMessage,
 }
 
 const lostGamePts = 3
@@ -57,8 +57,7 @@ type wordEntry struct {
 }
 type wordList []*wordEntry
 
-var newgameCmd,
-	currentCmd,
+var currentCmd,
 	historyCmd,
 	scoresCmd,
 	nicknameCmd,
@@ -78,7 +77,6 @@ func torigemubotOnInitialize(bot *tg.BotAPI) bool {
 		return false
 	}
 	botname := bot.Self.UserName
-	newgameCmd = regexp.MustCompile(fmt.Sprintf(`(?i)^/?newgame(@%s)?`, botname))
 	currentCmd = regexp.MustCompile(fmt.Sprintf(`(?i)^/?current(@%s)?`, botname))
 	historyCmd = regexp.MustCompile(fmt.Sprintf(`(?i)^/?history(@%s)?`, botname))
 	scoresCmd = regexp.MustCompile(fmt.Sprintf(`(?i)^/?scores(@%s)?`, botname))
@@ -100,9 +98,6 @@ func torigemubotOnMessage(bot *tg.BotAPI, msg *tg.Message) bool {
 	switch {
 	case !basicCmd.MatchString(msg.Text) && len(msg.Text) > 0:
 		doWordEntry(bot, msg)
-	case newgameCmd.MatchString(msg.Text):
-		// TODO: New game is deprecated. A game is always active. Remove this command entirely.
-		doShowCurrentWord(bot, msg, true)
 	case currentCmd.MatchString(msg.Text):
 		doShowCurrentWord(bot, msg, true)
 	case historyCmd.MatchString(msg.Text):
@@ -130,20 +125,24 @@ func doShowCurrentWord(bot *tg.BotAPI, msg *tg.Message, showUserInfo bool) {
 
 func doShowScores(bot *tg.BotAPI, chatID int64) {
 	log.Println("Received showscores command.")
-	scores := "ゲームの得点は\n＿＿＿＿＿＿＿＿＿＿＿"
+	scores := "*ゲームの得点は*\n＿＿＿＿＿＿＿＿＿＿＿"
 	for _, player := range getPlayers(chatID) {
 		scores += fmt.Sprintf("\n%s 【%d得点】「%d言葉」", formatPlayerName(player), player.score, player.numWords)
 	}
-	bot.Send(tg.NewMessage(chatID, scores))
+	msg := tg.NewMessage(chatID, scores)
+	msg.ParseMode = tg.ParseModeMarkdown
+	bot.Send(msg)
 }
 
 func doShowHistory(bot *tg.BotAPI, chatID int64) {
 	log.Println("Received showhistory command.")
-	wordHistory := "使用された言葉\n＿＿＿＿＿＿＿＿＿＿＿"
+	wordHistory := "*使用された言葉*\n＿＿＿＿＿＿＿＿＿＿＿"
 	for _, entry := range getWordHistory(chatID) {
 		wordHistory += "\n" + getWordEntryDisplay(chatID, entry, true)
 	}
-	bot.Send(tg.NewMessage(chatID, wordHistory))
+	msg := tg.NewMessage(chatID, wordHistory)
+	msg.ParseMode = tg.ParseModeMarkdown
+	bot.Send(msg)
 }
 
 func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log"
 
-	tg "github.com/go-telegram-bot-api/telegram-bot-api"
 	_ "github.com/mattn/go-sqlite3"
+	tg "github.com/semog/telegram-bot-api"
 )
 
 const playersTableName = "players"
