@@ -42,7 +42,7 @@ func getPlayerByID(chatID int64, userid int) (*playerEntry, bool) {
 		chatid: chatID,
 		userid: userid,
 	}
-	found := gamedb.Query(fmt.Sprintf("SELECT firstname, lastname, username, nickname, score, numwords FROM %s WHERE chatid = %d AND userid = %d",
+	found := gamedb.SingleQuery(fmt.Sprintf("SELECT firstname, lastname, username, nickname, score, numwords FROM %s WHERE chatid = %d AND userid = %d",
 		playersTableName, player.chatid, player.userid),
 		&player.firstname, &player.lastname, &player.username, &player.nickname, &player.score, &player.numWords)
 	return player, found
@@ -84,5 +84,5 @@ func updatePlayerWords(chatID int64, userid int, wordsUpdate int) bool {
 }
 
 func nickNameInUse(chatID int64, nickName string) bool {
-	return gamedb.Query(fmt.Sprintf("SELECT userid FROM %s WHERE chatid = %d and nickname = '%s'", playersTableName, chatID, nickName))
+	return gamedb.SingleQuery(fmt.Sprintf("SELECT userid FROM %s WHERE chatid = %d and nickname = '%s'", playersTableName, chatID, nickName))
 }

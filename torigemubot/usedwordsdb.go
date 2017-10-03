@@ -18,14 +18,14 @@ func addEntry(entry *wordEntry) {
 }
 
 func alreadyUsedWord(chatID int64, theWord string) bool {
-	return gamedb.Query(fmt.Sprintf("SELECT userid FROM %s WHERE chatid = %d and word = '%s'", usedwordsTableName, chatID, theWord))
+	return gamedb.SingleQuery(fmt.Sprintf("SELECT userid FROM %s WHERE chatid = %d and word = '%s'", usedwordsTableName, chatID, theWord))
 }
 
 func getFirstEntry(chatID int64) *wordEntry {
 	word := &wordEntry{
 		chatid: chatID,
 	}
-	if !gamedb.Query(fmt.Sprintf("SELECT userid, word, points FROM %s WHERE chatid = %d ORDER BY wordindex ASC LIMIT 1", usedwordsTableName, chatID),
+	if !gamedb.SingleQuery(fmt.Sprintf("SELECT userid, word, points FROM %s WHERE chatid = %d ORDER BY wordindex ASC LIMIT 1", usedwordsTableName, chatID),
 		&word.userid, &word.word, &word.points) {
 		return nil
 	}
@@ -36,7 +36,7 @@ func getLastEntry(chatID int64) *wordEntry {
 	word := &wordEntry{
 		chatid: chatID,
 	}
-	if !gamedb.Query(fmt.Sprintf("SELECT userid, word, points FROM %s WHERE chatid = %d ORDER BY wordindex DESC LIMIT 1", usedwordsTableName, chatID),
+	if !gamedb.SingleQuery(fmt.Sprintf("SELECT userid, word, points FROM %s WHERE chatid = %d ORDER BY wordindex DESC LIMIT 1", usedwordsTableName, chatID),
 		&word.userid, &word.word, &word.points) {
 		return nil
 	}
@@ -65,7 +65,7 @@ func getWordHistory(chatID int64) wordList {
 
 func getNumEntries(chatID int64) int {
 	numwords := 0
-	gamedb.Query(fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE chatid = %d", usedwordsTableName, chatID), &numwords)
+	gamedb.SingleQuery(fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE chatid = %d", usedwordsTableName, chatID), &numwords)
 	return numwords
 }
 
