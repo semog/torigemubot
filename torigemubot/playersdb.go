@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 
-	_ "github.com/mattn/go-sqlite3"
 	tg "github.com/semog/telegram-bot-api"
 )
 

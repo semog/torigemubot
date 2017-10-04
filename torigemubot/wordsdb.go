@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-
-	_ "github.com/mattn/go-sqlite3"
 )
 
 const wordsTablename = "words"
