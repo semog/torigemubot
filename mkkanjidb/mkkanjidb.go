@@ -11,7 +11,7 @@ import (
 	"regexp"
 	"strings"
 
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/semog/go-sqldb"
 )
 
 const dbFilename = "torigemu.db"
@@ -25,7 +25,7 @@ const maxJLPT = 6
 
 type kmap map[string]int
 
-var db *sql.DB
+var db *sqldb.SQLDb
 var insertStmt *sql.Stmt
 var insertcount = 0
 var failcount = 0
@@ -47,79 +47,75 @@ func main() {
 		return
 	}
 	log.Printf("Creating kanji database...")
-	err = createKanjiDb(dict, kptsmap)
-	if err != nil {
-		log.Printf("error: %v", err)
-		return
+	if !createKanjiDb(dict, kptsmap) {
+		log.Println("ERROR creating database.")
 	}
 }
 
-func createKanjiDb(dict *jmdict, kptsmap kmap) error {
+func createKanjiDb(dict *jmdict, kptsmap kmap) bool {
 	var err error
-	db, err = sql.Open("sqlite3", dbFilename)
+	db, err = sqldb.OpenDb(dbFilename)
 	if err != nil {
-		return err
+		log.Printf("ERROR: Could not open database %s.\n", dbFilename)
+		return false
 	}
-	dropTable("words")
-	dropTable("kanjipoints")
-	err = createTable("words (seq TEXT, kanji TEXT PRIMARY KEY, kana TEXT, points INT)")
-	if err != nil {
-		return err
-	}
-	err = createTable("kanjipoints (kanji TEXT PRIMARY KEY, points INT)")
-	if err != nil {
-		return err
-	}
-	insertKanjiPoints(kptsmap)
-	insertWords(dict, kptsmap)
-	return nil
+	db.DropTable("words")
+	db.DropTable("kanjipoints")
+	return db.CreateTable("words (seq TEXT, kanji TEXT PRIMARY KEY, kana TEXT, points INT)") &&
+		db.CreateTable("kanjipoints (kanji TEXT PRIMARY KEY, points INT)") &&
+		insertKanjiPoints(kptsmap) &&
+		insertWords(dict, kptsmap)
 }
 
-func insertKanjiPoints(kptsmap kmap) error {
+func insertKanjiPoints(kptsmap kmap) bool {
 	var err error
 	// Prepare the statement and use a transaction for massive speed increase.
 	insertStmt, err = db.Prepare("INSERT INTO kanjipoints (kanji, points) VALUES (:KJ, :SC)")
 	if err != nil {
-		return err
+		log.Printf("error: %v", err)
+		return false
 	}
 	defer insertStmt.Close()
 	// Optimize the database insertion
-	execDb("BEGIN")
+	db.BeginTrans()
 	for k, p := range kptsmap {
 		_, err = insertStmt.Exec(sql.Named("KJ", &k), sql.Named("SC", &p))
 		if err != nil {
-			execDb("ROLLBACK")
-			return err
+			db.RollbackTrans()
+			log.Printf("error: %v", err)
+			return false
 		}
 	}
-	execDb("COMMIT")
-	return nil
+	return db.CommitTrans()
 }
 
-func insertWords(dict *jmdict, kptsmap kmap) error {
+func insertWords(dict *jmdict, kptsmap kmap) bool {
 	var err error
 	// Prepare the statement and use a transaction for massive speed increase.
 	insertStmt, err = db.Prepare("INSERT INTO words (seq, kanji, kana, points) VALUES (:SQ, :KJ, :KN, :SC)")
 	if err != nil {
-		return err
+		log.Printf("error: %v", err)
+		return false
 	}
 	defer insertStmt.Close()
 	// Optimize the database insertion
-	execDb("BEGIN")
+	db.BeginTrans()
 	for _, e := range dict.Entry {
 		if isNoun(e) {
-			err = saveWord(e, kptsmap)
-			if err != nil {
-				log.Printf("Error saving seq: %d", e.Seq)
-				execDb("ROLLBACK")
-				return err
+			if !saveWord(e, kptsmap) {
+				log.Printf("Error saving seq: %d, %v", e.Seq, err)
+				db.RollbackTrans()
+				return false
 			}
 		}
 	}
-	execDb("COMMIT")
+	if !db.CommitTrans() {
+		log.Printf("ERROR committing transaction.")
+		return false
+	}
 	log.Printf("Inserted %d record(s)", insertcount)
 	log.Printf("Merged %d record(s)", failcount)
-	return nil
+	return true
 }
 
 func isNoun(e entry) bool {
@@ -139,8 +135,7 @@ func isNoun(e entry) bool {
 	return false
 }
 
-func saveWord(e entry, kptsmap kmap) error {
-	var err error
+func saveWord(e entry, kptsmap kmap) bool {
 	kana, endsInN := getKana(e)
 	kanjis := getKanjis(e)
 	seq := fmt.Sprintf("%d", e.Seq)
@@ -148,18 +143,16 @@ func saveWord(e entry, kptsmap kmap) error {
 		// Get all of the entry kanji variants
 		hiragana := convertToHiragana(kana)
 		for _, kanji := range kanjis {
-			err = saveKanji(seq, kanji, hiragana, endsInN, kptsmap)
-			if err != nil {
-				return err
+			if !saveKanji(seq, kanji, hiragana, endsInN, kptsmap) {
+				return false
 			}
 		}
 	} else {
 		// Only kana for this entry.
 		for _, kn := range strings.Split(kana, ",") {
 			hiragana := convertToHiragana(kn)
-			err = saveKanji(seq, kn, hiragana, endsInN, kptsmap)
-			if err != nil {
-				return err
+			if !saveKanji(seq, kn, hiragana, endsInN, kptsmap) {
+				return false
 			}
 		}
 	}
@@ -167,13 +160,12 @@ func saveWord(e entry, kptsmap kmap) error {
 	nokanjis := getNoKanjis(e)
 	if len(nokanjis) > 0 {
 		for _, nkn := range nokanjis {
-			err = saveKanji(seq, nkn, convertToHiragana(nkn), endsInNExp.MatchString(nkn), kptsmap)
-			if err != nil {
-				return err
+			if !saveKanji(seq, nkn, convertToHiragana(nkn), endsInNExp.MatchString(nkn), kptsmap) {
+				return false
 			}
 		}
 	}
-	return nil
+	return true
 }
 
 func convertToHiragana(kana string) string {
@@ -198,7 +190,7 @@ func convertToHiragana(kana string) string {
 	return hiragana
 }
 
-func saveKanji(seq string, kanji string, kana string, endsInN bool, kptsmap kmap) error {
+func saveKanji(seq string, kanji string, kana string, endsInN bool, kptsmap kmap) bool {
 	var pts int
 	if endsInN {
 		// Automatic zero for ending in 'ん'
@@ -206,35 +198,31 @@ func saveKanji(seq string, kanji string, kana string, endsInN bool, kptsmap kmap
 	} else {
 		pts = getKanjiWordPts(kanji, kptsmap)
 	}
+	saved := true
 	_, err := insertStmt.Exec(sql.Named("SQ", seq), sql.Named("KJ", &kanji), sql.Named("KN", &kana), sql.Named("SC", &pts))
 	if err != nil {
-		err = mergeRecords(seq, kanji, kana, pts)
+		saved = mergeRecords(seq, kanji, kana, pts)
 		failcount++
-		// return err
 	} else {
 		insertcount++
 	}
-	return err
+	return saved
 }
 
-func mergeRecords(seq string, kanji string, kana string, pts int) error {
+func mergeRecords(seq string, kanji string, kana string, pts int) bool {
 	var existingKana, existingSeq string
 	var existingPts int
-	found := queryDb(fmt.Sprintf("SELECT seq, kana, points FROM words WHERE kanji = '%s'", kanji),
+	found := db.SingleQuery(fmt.Sprintf("SELECT seq, kana, points FROM words WHERE kanji = '%s'", kanji),
 		&existingSeq, &existingKana, &existingPts)
 	if !found {
-		return fmt.Errorf("DBERROR: Could not find record for %s", kanji)
+		log.Printf("DBERROR: Could not find record for %s", kanji)
+		return false
 	}
 	// Merge kana and the word pts.
 	newSeq := mergeStrings(existingSeq, seq)
 	newKana := mergeStrings(existingKana, kana)
 	newPts := mergePts(existingPts, pts)
-	err := execDb("UPDATE words SET seq = ?, kana = ?, points = ? WHERE kanji = ?", &newSeq, &newKana, &newPts, &kanji)
-	if err != nil {
-		log.Printf("DBERROR updating %s", kanji)
-		return err
-	}
-	return nil
+	return db.Exec("UPDATE words SET seq = ?, kana = ?, points = ? WHERE kanji = ?", &newSeq, &newKana, &newPts, &kanji)
 }
 
 func mergeStrings(first string, second string) string {
@@ -397,47 +385,4 @@ func loadXMLFile(filename string) ([]byte, error) {
 		return nil, err
 	}
 	return data, nil
-}
-
-func dropTable(tableDef string) {
-	execDb(fmt.Sprintf("DROP TABLE IF EXISTS %s", tableDef))
-}
-
-func createTable(tableDef string) error {
-	return execDb(fmt.Sprintf("CREATE TABLE %s", tableDef))
-}
-
-func createIndex(indexDef string) error {
-	return execDb(fmt.Sprintf("CREATE INDEX %s", indexDef))
-}
-
-func execDb(stmt string, args ...interface{}) error {
-	statement, err := db.Prepare(stmt)
-	if err != nil {
-		return err
-	}
-	_, err = statement.Exec(args...)
-	return err
-}
-
-func queryDb(stmt string, args ...interface{}) bool {
-	rows, err := db.Query(stmt)
-	defer closeRows(rows)
-	if err != nil {
-		log.Printf("DBERROR: Querying %s: %v", stmt, err)
-		return false
-	}
-	if rows.Next() {
-		if args != nil {
-			rows.Scan(args...)
-		}
-		return true
-	}
-	return false
-}
-
-func closeRows(rows *sql.Rows) {
-	if nil != rows {
-		rows.Close()
-	}
 }
