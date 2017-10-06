@@ -57,15 +57,6 @@ type wordEntry struct {
 }
 type wordList []*wordEntry
 
-var currentCmd,
-	historyCmd,
-	scoresCmd,
-	nicknameCmd,
-	helpCmd,
-	shutdownCmd,
-	addCmd,
-	removeCmd *regexp.Regexp
-var basicCmd = regexp.MustCompile(`(?i)^/`)
 var kanjiExp = regexp.MustCompile(`(\p{Han}|\p{Katakana}|\p{Hiragana}|ー)+`)
 var addCustomWordExp = regexp.MustCompile(`(?i)([\p{Han}|\p{Katakana}|\p{Hiragana}|ー]+)[ 　\t]+([\p{Hiragana}|,|、]+)`)
 var removeCustomWordExp = regexp.MustCompile(`(?i)([\p{Han}|\p{Katakana}|\p{Hiragana}|ー]+)`)
@@ -76,15 +67,6 @@ func torigemubotOnInitialize(bot *tg.BotAPI) bool {
 		log.Println("ERROR: Could not initialize database.")
 		return false
 	}
-	botname := bot.Self.UserName
-	currentCmd = regexp.MustCompile(fmt.Sprintf(`(?i)^/?current(@%s)?`, botname))
-	historyCmd = regexp.MustCompile(fmt.Sprintf(`(?i)^/?history(@%s)?`, botname))
-	scoresCmd = regexp.MustCompile(fmt.Sprintf(`(?i)^/?scores(@%s)?`, botname))
-	nicknameCmd = regexp.MustCompile(fmt.Sprintf(`(?i)^/?nick(@%s)?[ 　\t]*`, botname))
-	helpCmd = regexp.MustCompile(fmt.Sprintf(`(?i)^/?help(@%s)?`, botname))
-	addCmd = regexp.MustCompile(fmt.Sprintf(`(?i)^/?add(@%s)?[ 　\t]*`, botname))
-	removeCmd = regexp.MustCompile(fmt.Sprintf(`(?i)^/?remove(@%s)?[ 　\t]*`, botname))
-	shutdownCmd = regexp.MustCompile(fmt.Sprintf(`(?i)^/?shutdown(@%s)?[ \t]+now`, botname))
 	return true
 }
 
@@ -95,26 +77,29 @@ func torigemubotOnDispose(bot *tg.BotAPI) {
 func torigemubotOnMessage(bot *tg.BotAPI, msg *tg.Message) bool {
 	log.Printf("MsgFrom: Chat %s, User %s %s (%s): %s",
 		formatChatName(msg.Chat), msg.From.FirstName, msg.From.LastName, msg.From.UserName, msg.Text)
-	switch {
-	case !basicCmd.MatchString(msg.Text) && len(msg.Text) > 0:
-		doWordEntry(bot, msg)
-	case currentCmd.MatchString(msg.Text):
-		doShowCurrentWord(bot, msg, true)
-	case historyCmd.MatchString(msg.Text):
-		doShowHistory(bot, msg.Chat.ID)
-	case scoresCmd.MatchString(msg.Text):
-		doShowScores(bot, msg.Chat.ID)
-	case nicknameCmd.MatchString(msg.Text):
-		doSetNickname(bot, msg, nicknameCmd.ReplaceAllString(msg.Text, ""))
-	case addCmd.MatchString(msg.Text):
-		doAddWord(bot, msg, addCmd.ReplaceAllString(msg.Text, ""))
-	case removeCmd.MatchString(msg.Text):
-		doRemoveWord(bot, msg, removeCmd.ReplaceAllString(msg.Text, ""))
-	case helpCmd.MatchString(msg.Text):
-		doHelp(bot, msg)
-	case shutdownCmd.MatchString(msg.Text):
-		doShutdown(bot, msg)
-		return false
+	if !msg.IsCommand() {
+		if len(msg.Text) > 0 {
+			doWordEntry(bot, msg)
+		}
+	} else {
+		switch strings.ToLower(msg.Command()) {
+		case "current":
+			doShowCurrentWord(bot, msg, true)
+		case "history":
+			doShowHistory(bot, msg.Chat.ID)
+		case "scores":
+			doShowScores(bot, msg.Chat.ID)
+		case "nick":
+			doSetNickname(bot, msg)
+		case "add":
+			doAddWord(bot, msg)
+		case "remove":
+			doRemoveWord(bot, msg)
+		case "help":
+			doHelp(bot, msg)
+		case "shutdown":
+			return doShutdown(bot, msg)
+		}
 	}
 	return true
 }
@@ -206,8 +191,13 @@ func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
 	doShowCurrentWord(bot, msg, false)
 }
 
-func doSetNickname(bot *tg.BotAPI, msg *tg.Message, newNickname string) {
+func doSetNickname(bot *tg.BotAPI, msg *tg.Message) {
 	log.Println("Received set nickname command.")
+	newNickname := msg.CommandArguments()
+	if len(newNickname) < 1 {
+		sendReplyMsg(bot, msg, "新しい名前を入力して下さい。\n(^_^)/")
+		return
+	}
 	player := getPlayer(msg.Chat.ID, msg.From)
 	oldName := formatPlayerName(player)
 	if oldName == newNickname {
@@ -222,10 +212,10 @@ func doSetNickname(bot *tg.BotAPI, msg *tg.Message, newNickname string) {
 }
 
 // First parameter is the kanji, second parameter is hiragana pronunciation (can be comma-separated list of multiple pronunciations).
-func doAddWord(bot *tg.BotAPI, msg *tg.Message, wordVal string) {
+func doAddWord(bot *tg.BotAPI, msg *tg.Message) {
 	log.Println("Received add custom word command.")
 	// Extract the kanji and kana definitions for this custom word.
-	customWord := addCustomWordExp.FindStringSubmatch(wordVal)
+	customWord := addCustomWordExp.FindStringSubmatch(msg.CommandArguments())
 	if len(customWord) < 3 {
 		sendReplyMsg(bot, msg, "❌誤りです。漢字とひらがながありません。")
 		return
@@ -249,10 +239,10 @@ func doAddWord(bot *tg.BotAPI, msg *tg.Message, wordVal string) {
 	sendReplyMsg(bot, msg, fmt.Sprintf("追加された言葉：　%s「%s」。ありがとうございました！", kanji, kana))
 }
 
-func doRemoveWord(bot *tg.BotAPI, msg *tg.Message, wordVal string) {
+func doRemoveWord(bot *tg.BotAPI, msg *tg.Message) {
 	log.Println("Received remove custom word command.")
 	// Extract the kanji to be removed.
-	customWord := removeCustomWordExp.FindStringSubmatch(wordVal)
+	customWord := removeCustomWordExp.FindStringSubmatch(msg.CommandArguments())
 	if len(customWord) < 2 {
 		sendReplyMsg(bot, msg, "❌誤りです。漢字がありません。")
 		return
@@ -285,9 +275,13 @@ Example: sakura 「さくら」 → rajio 「ラジオ」 → onigiri 「おに�
 The player who used the word udon lost this game.`))
 }
 
-func doShutdown(bot *tg.BotAPI, msg *tg.Message) {
+func doShutdown(bot *tg.BotAPI, msg *tg.Message) bool {
 	log.Println("Received shutdown command.")
-	bot.Send(tg.NewMessage(msg.Chat.ID, "シャットダウン。。。"))
+	if strings.ToLower(msg.CommandArguments()) == "now" {
+		bot.Send(tg.NewMessage(msg.Chat.ID, "シャットダウン。。。"))
+		return false
+	}
+	return true
 }
 
 func sendReplyMsg(bot *tg.BotAPI, msg *tg.Message, message string) {
