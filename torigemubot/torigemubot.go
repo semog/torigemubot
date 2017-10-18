@@ -58,7 +58,7 @@ type wordEntry struct {
 type wordList []*wordEntry
 
 var kanjiExp = regexp.MustCompile(`(\p{Han}|\p{Katakana}|\p{Hiragana}|ー)+`)
-var addCustomWordExp = regexp.MustCompile(`(?i)([\p{Han}|\p{Katakana}|\p{Hiragana}|ー]+)[ 　\t]+([\p{Hiragana}|,|、]+)`)
+var addCustomWordExp = regexp.MustCompile(`(?i)([\p{Han}|\p{Katakana}|\p{Hiragana}|ー]+)[ 　　\t]+([\p{Hiragana}|,|、]+)`)
 var removeCustomWordExp = regexp.MustCompile(`(?i)([\p{Han}|\p{Katakana}|\p{Hiragana}|ー]+)`)
 
 // Initialize global data
