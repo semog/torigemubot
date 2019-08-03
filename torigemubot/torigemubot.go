@@ -25,7 +25,7 @@ help - Display game rules and other instructions.
 var torigemubot = tg.BotEventHandlers{
 	OnInitialize: torigemubotOnInitialize,
 	OnDispose:    torigemubotOnDispose,
-	OnMessage:    torigemubotOnMessage,
+	OnCommand:    torigemubotOnCommand,
 }
 
 const lostGamePts = 3
@@ -74,32 +74,30 @@ func torigemubotOnDispose(bot *tg.BotAPI) {
 	// Do any cleanup of external resources.
 }
 
-func torigemubotOnMessage(bot *tg.BotAPI, msg *tg.Message) bool {
-	log.Printf("MsgFrom: Chat %s, User %s %s (%s): %s",
-		formatChatName(msg.Chat), msg.From.FirstName, msg.From.LastName, msg.From.UserName, msg.Text)
-	if !msg.IsCommand() {
+func torigemubotOnCommand(bot *tg.BotAPI, cmd string, msg *tg.Message) bool {
+	log.Printf("Command From: Chat %s, User %s %s (%s): %s - %s",
+		formatChatName(msg.Chat), msg.From.FirstName, msg.From.LastName, msg.From.UserName, cmd, msg.Text)
+	switch strings.ToLower(cmd) {
+	case "":
 		if len(msg.Text) > 0 {
 			doWordEntry(bot, msg)
 		}
-	} else {
-		switch strings.ToLower(msg.Command()) {
-		case "current":
-			doShowCurrentWord(bot, msg, true)
-		case "history":
-			doShowHistory(bot, msg.Chat.ID)
-		case "scores":
-			doShowScores(bot, msg.Chat.ID)
-		case "nick":
-			doSetNickname(bot, msg)
-		case "add":
-			doAddWord(bot, msg)
-		case "remove":
-			doRemoveWord(bot, msg)
-		case "help":
-			doHelp(bot, msg)
-		case "shutdown":
-			return doShutdown(bot, msg)
-		}
+	case "current":
+		doShowCurrentWord(bot, msg, true)
+	case "history":
+		doShowHistory(bot, msg.Chat.ID)
+	case "scores":
+		doShowScores(bot, msg.Chat.ID)
+	case "nick":
+		doSetNickname(bot, msg)
+	case "add":
+		doAddWord(bot, msg)
+	case "remove":
+		doRemoveWord(bot, msg)
+	case "help":
+		doHelp(bot, msg)
+	case "shutdown":
+		return doShutdown(bot, msg)
 	}
 	return true
 }
