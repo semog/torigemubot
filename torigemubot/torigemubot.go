@@ -6,7 +6,8 @@ import (
 	"regexp"
 	"strings"
 
-	tg "github.com/semog/telegram-bot-api"
+	tg "github.com/semog/go-bot-api/v4"
+	"k8s.io/klog"
 )
 
 /*
@@ -63,8 +64,8 @@ var removeCustomWordExp = regexp.MustCompile(`(?i)([\p{Han}|\p{Katakana}|\p{Hira
 
 // Initialize global data
 func torigemubotOnInitialize(bot *tg.BotAPI) bool {
-	if !initgameDb() {
-		log.Println("ERROR: Could not initialize database.")
+	if err := initgameDb(); err != nil {
+		klog.Errorf("could not initialize database: %v\n", err)
 		return false
 	}
 	return true
@@ -230,7 +231,8 @@ func doAddWord(bot *tg.BotAPI, msg *tg.Message) {
 		sendReplyMsg(bot, msg, fmt.Sprintf("❌言葉は既に存在します：　%s「%s」。", kanji, kana))
 		return
 	}
-	if !addCustomWord(msg.Chat.ID, msg.From.ID, kanji, kana) {
+	if err := addCustomWord(msg.Chat.ID, msg.From.ID, kanji, kana); err != nil {
+		klog.Error(err)
 		sendReplyMsg(bot, msg, fmt.Sprintf("❌誤りです。言葉を追加できませんでした：　%s「%s」。", kanji, kana))
 		return
 	}
@@ -246,7 +248,8 @@ func doRemoveWord(bot *tg.BotAPI, msg *tg.Message) {
 		return
 	}
 	kanji := customWord[0]
-	if !removeCustomWord(msg.Chat.ID, kanji) {
+	if err := removeCustomWord(msg.Chat.ID, kanji); err != nil {
+		klog.Error(err)
 		sendReplyMsg(bot, msg, fmt.Sprintf("言葉を削除できませんでした：　%s.", kanji))
 		return
 	}

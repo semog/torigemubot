@@ -4,7 +4,8 @@ import (
 	"flag"
 	"log"
 
-	tg "github.com/semog/telegram-bot-api"
+	tg "github.com/semog/go-bot-api/v4"
+	"k8s.io/klog"
 )
 
 var noturns *bool
@@ -15,6 +16,7 @@ func main() {
 	noturns = flag.Bool("noturns", false, "Don't take turns")
 	flag.Parse()
 
+	klog.InitFlags(nil)
 	if *token == "Ask @BotFather" {
 		log.Fatal("token flag required. Go ask @BotFather.")
 	}

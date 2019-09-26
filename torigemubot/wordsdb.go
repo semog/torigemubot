@@ -54,14 +54,14 @@ func lookupKana(chatID int64, theWord string) (string, int) {
 func lookupStandardKana(chatID int64, theWord string) (bool, string, int) {
 	var kana string
 	var pts int
-	found := gamedb.SingleQuery(fmt.Sprintf("SELECT kana, points FROM %s WHERE kanji = '%s'", wordsTablename, theWord), &kana, &pts)
+	found := nil == gamedb.SingleQuery(fmt.Sprintf("SELECT kana, points FROM %s WHERE kanji = '%s'", wordsTablename, theWord), &kana, &pts)
 	return found, kana, pts
 }
 
 func lookupCustomKana(chatID int64, theWord string) (bool, string, int) {
 	var kana string
 	var pts int
-	found := gamedb.SingleQuery(fmt.Sprintf("SELECT kana, points FROM %s WHERE chatid = %d AND kanji = '%s'", customwordsTablename, chatID, theWord), &kana, &pts)
+	found := nil == gamedb.SingleQuery(fmt.Sprintf("SELECT kana, points FROM %s WHERE chatid = %d AND kanji = '%s'", customwordsTablename, chatID, theWord), &kana, &pts)
 	return found, kana, pts
 }
 
@@ -122,31 +122,43 @@ func calcWordPoints(kanji string) int {
 
 func getKanjiPoints(kanjiCharacter string) int {
 	var pts int
-	if !gamedb.SingleQuery(fmt.Sprintf("SELECT points FROM %s WHERE kanji = '%s'", kanjipointsTablename, kanjiCharacter), &pts) {
+	if nil != gamedb.SingleQuery(fmt.Sprintf("SELECT points FROM %s WHERE kanji = '%s'", kanjipointsTablename, kanjiCharacter), &pts) {
 		return 0
 	}
 	return pts
 }
 
-func addCustomWord(chatID int64, userid int, kanji string, kana string) bool {
+func addCustomWord(chatID int64, userID int, kanji string, kana string) error {
 	wordpts := calcWordPoints(kanji)
-	gamedb.CreateSavePoint(addCustomWordSavePoint)
 	// Replace any existing custom word with the updated version of it.
-	return gamedb.CommitSavePointOnSuccess(addCustomWordSavePoint,
-		removeCustomWord(chatID, kanji) &&
-			gamedb.Exec(fmt.Sprintf("INSERT INTO %s (chatid, userid, kanji, kana, points) VALUES (?, ?, ?, ?, ?)", customwordsTablename), chatID, userid, kanji, kana, wordpts) &&
-			updatePlayerScore(chatID, userid, addWordPts))
+	return gamedb.ExecWithSavePoint(addCustomWordSavePoint, func() error {
+		if err := removeCustomWord(chatID, kanji); err != nil {
+			return err
+		}
+		if err := gamedb.Exec(fmt.Sprintf("INSERT INTO %s (chatid, userid, kanji, kana, points) VALUES (?, ?, ?, ?, ?)", customwordsTablename), chatID, userID, kanji, kana, wordpts); err != nil {
+			return err
+		}
+		return updatePlayerScore(chatID, userID, addWordPts)
+	})
 }
 
-func removeCustomWord(chatID int64, kanji string) bool {
-	// Get userid that submitted the custom word.
-	var userid int
-	if !gamedb.SingleQuery(fmt.Sprintf("SELECT userid from %s where chatid = %d AND kanji = '%s'", customwordsTablename, chatID, kanji), &userid) {
+func removeCustomWord(chatID int64, kanji string) error {
+	exists, userID := customWordExists(chatID, kanji)
+	if !exists {
 		// Custom word does not exist, so it has been removed.
-		return true
+		return nil
 	}
-	gamedb.CreateSavePoint(removeCustomWordSavePoint)
-	return gamedb.CommitSavePointOnSuccess(removeCustomWordSavePoint,
-		gamedb.Exec(fmt.Sprintf("DELETE FROM %s WHERE chatid = %d AND kanji = '%s'", customwordsTablename, chatID, kanji)) &&
-			updatePlayerScore(chatID, userid, -addWordPts))
+	return gamedb.ExecWithSavePoint(removeCustomWordSavePoint, func() error {
+		if err := gamedb.Exec(fmt.Sprintf("DELETE FROM %s WHERE chatid = %d AND kanji = '%s'", customwordsTablename, chatID, kanji)); err != nil {
+			return err
+		}
+		return updatePlayerScore(chatID, userID, -addWordPts)
+	})
+}
+
+func customWordExists(chatID int64, kanji string) (bool, int) {
+	// Get userID that submitted the custom word.
+	var userID int
+	err := gamedb.SingleQuery(fmt.Sprintf("SELECT userid from %s where chatid = %d AND kanji = '%s'", customwordsTablename, chatID, kanji), &userID)
+	return err == nil, userID
 }

@@ -16,14 +16,14 @@ func addEntry(entry *wordEntry) {
 }
 
 func alreadyUsedWord(chatID int64, theWord string) bool {
-	return gamedb.SingleQuery(fmt.Sprintf("SELECT userid FROM %s WHERE chatid = %d and word = '%s'", usedwordsTableName, chatID, theWord))
+	return nil == gamedb.SingleQuery(fmt.Sprintf("SELECT userid FROM %s WHERE chatid = %d and word = '%s'", usedwordsTableName, chatID, theWord))
 }
 
 func getFirstEntry(chatID int64) *wordEntry {
 	word := &wordEntry{
 		chatid: chatID,
 	}
-	if !gamedb.SingleQuery(fmt.Sprintf("SELECT userid, word, points FROM %s WHERE chatid = %d ORDER BY wordindex ASC LIMIT 1", usedwordsTableName, chatID),
+	if nil != gamedb.SingleQuery(fmt.Sprintf("SELECT userid, word, points FROM %s WHERE chatid = %d ORDER BY wordindex ASC LIMIT 1", usedwordsTableName, chatID),
 		&word.userid, &word.word, &word.points) {
 		return nil
 	}
@@ -34,29 +34,29 @@ func getLastEntry(chatID int64) *wordEntry {
 	word := &wordEntry{
 		chatid: chatID,
 	}
-	if !gamedb.SingleQuery(fmt.Sprintf("SELECT userid, word, points FROM %s WHERE chatid = %d ORDER BY wordindex DESC LIMIT 1", usedwordsTableName, chatID),
+	if nil != gamedb.SingleQuery(fmt.Sprintf("SELECT userid, word, points FROM %s WHERE chatid = %d ORDER BY wordindex DESC LIMIT 1", usedwordsTableName, chatID),
 		&word.userid, &word.word, &word.points) {
 		return nil
 	}
 	return word
 }
 
-func updateFirstEntryPoints(chatID int64, wordsUpdate int) bool {
+func updateFirstEntryPoints(chatID int64, wordsUpdate int) error {
 	// The following simplified version is not working with the current library, but works with the command-line client.
-	// return execDb(fmt.Sprintf("UPDATE %s SET points = %d WHERE chatid = %d ORDER BY wordindex ASC LIMIT 1", usedwordsTableName, wordsUpdate, chatID))
+	// return gamedb.Exec(fmt.Sprintf("UPDATE %s SET points = %d WHERE chatid = %d ORDER BY wordindex ASC LIMIT 1", usedwordsTableName, wordsUpdate, chatID))
 	return gamedb.Exec(fmt.Sprintf("UPDATE %s SET points = %d WHERE chatid = %d AND wordindex = (SELECT wordindex FROM %s WHERE chatid = %d ORDER BY wordindex ASC LIMIT 1)", usedwordsTableName, wordsUpdate, chatID, usedwordsTableName, chatID))
 }
 
 func getWordHistory(chatID int64) wordList {
 	words := make(wordList, 0)
 	gamedb.MultiQuery(fmt.Sprintf("SELECT userid, word, points FROM %s WHERE chatid = %d ORDER BY wordindex", usedwordsTableName, chatID),
-		func(rows *sql.Rows) bool {
+		func(rows *sql.Rows) error {
 			word := &wordEntry{
 				chatid: chatID,
 			}
 			rows.Scan(&word.userid, &word.word, &word.points)
 			words = append(words, word)
-			return true
+			return nil
 		})
 	return words
 }
