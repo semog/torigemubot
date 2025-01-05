@@ -1,4 +1,0 @@
-#!/bin/bash
-rm ./mkkanjidb
-go build
-./mkkanjidb

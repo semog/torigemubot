@@ -77,6 +77,8 @@ func createKanjiDb(dict *jmdict, kptsmap kmap) error {
 
 func insertKanjiPoints(kptsmap kmap) error {
 	var err error
+
+	log.Printf("Inserting kanji points...")
 	// Prepare the statement and use a transaction for massive speed increase.
 	insertStmt, err = db.Prepare("INSERT INTO kanjipoints (kanji, points) VALUES (:KJ, :SC)")
 	if err != nil {
@@ -100,6 +102,7 @@ func insertKanjiPoints(kptsmap kmap) error {
 }
 
 func insertWords(dict *jmdict, kptsmap kmap) error {
+	log.Printf("Inserting words...")
 	// Prepare the statement and use a transaction for massive speed increase.
 	insertStmt, err := db.Prepare("INSERT INTO words (seq, kanji, kana, points) VALUES (:SQ, :KJ, :KN, :SC)")
 	if err != nil {

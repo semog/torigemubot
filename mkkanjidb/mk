@@ -1,0 +1,6 @@
+#!/bin/bash
+rm -f ./mkkanjidb
+echo Building mkkanjidb tool...
+go build
+echo Running mkkanjidb...
+./mkkanjidb
