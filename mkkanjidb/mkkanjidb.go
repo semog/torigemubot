@@ -18,15 +18,15 @@ const dbFilename = "torigemu.db"
 
 const jmdictFileName = "jmdict.xml"
 const kanjidictFileName = "kanjidic2.xml"
-const maxPts = 15.0   // Max grade of 10 + Max JLPT of 5
-const maxLimit = 4.0  // Arbitrary limit
+
+// const maxPts = 15.0   // Max grade of 10 + Max JLPT of 5
+// const maxLimit = 4.0  // Arbitrary limit
 const ptsFactor = 3.0 // maxPts / maxLimit
 const maxJLPT = 6
 
 type kmap map[string]int
 
 var db *sqldb.SQLDb
-var insertStmt *sql.Stmt
 var insertcount = 0
 var failcount = 0
 var kanjiExp = regexp.MustCompile(`\p{Han}+`)
@@ -80,7 +80,7 @@ func insertKanjiPoints(kptsmap kmap) error {
 
 	log.Printf("Inserting kanji points...")
 	// Prepare the statement and use a transaction for massive speed increase.
-	insertStmt, err = db.Prepare("INSERT INTO kanjipoints (kanji, points) VALUES (:KJ, :SC)")
+	insertStmt, err := db.Prepare("INSERT INTO kanjipoints (kanji, points) VALUES (:KJ, :SC)")
 	if err != nil {
 		return err
 	}
@@ -117,7 +117,7 @@ func insertWords(dict *jmdict, kptsmap kmap) error {
 
 	for _, e := range dict.Entry {
 		if isNoun(e) {
-			if err := saveWord(e, kptsmap); err != nil {
+			if err := saveWord(insertStmt, e, kptsmap); err != nil {
 				db.RollbackTrans()
 				return err
 			}
@@ -150,7 +150,7 @@ func isNoun(e entry) bool {
 	return false
 }
 
-func saveWord(e entry, kptsmap kmap) error {
+func saveWord(insertStmt *sql.Stmt, e entry, kptsmap kmap) error {
 	kana, endsInN := getKana(e)
 	kanjis := getKanjis(e)
 	seq := fmt.Sprintf("%d", e.Seq)
@@ -158,7 +158,7 @@ func saveWord(e entry, kptsmap kmap) error {
 		// Get all of the entry kanji variants
 		hiragana := convertToHiragana(kana)
 		for _, kanji := range kanjis {
-			if err := saveKanji(seq, kanji, hiragana, endsInN, kptsmap); err != nil {
+			if err := saveKanji(insertStmt, seq, kanji, hiragana, endsInN, kptsmap); err != nil {
 				return err
 			}
 		}
@@ -166,7 +166,7 @@ func saveWord(e entry, kptsmap kmap) error {
 		// Only kana for this entry.
 		for _, kn := range strings.Split(kana, ",") {
 			hiragana := convertToHiragana(kn)
-			if err := saveKanji(seq, kn, hiragana, endsInN, kptsmap); err != nil {
+			if err := saveKanji(insertStmt, seq, kn, hiragana, endsInN, kptsmap); err != nil {
 				return err
 			}
 		}
@@ -175,7 +175,7 @@ func saveWord(e entry, kptsmap kmap) error {
 	nokanjis := getNoKanjis(e)
 	if len(nokanjis) > 0 {
 		for _, nkn := range nokanjis {
-			if err := saveKanji(seq, nkn, convertToHiragana(nkn), endsInNExp.MatchString(nkn), kptsmap); err != nil {
+			if err := saveKanji(insertStmt, seq, nkn, convertToHiragana(nkn), endsInNExp.MatchString(nkn), kptsmap); err != nil {
 				return err
 			}
 		}
@@ -186,7 +186,7 @@ func saveWord(e entry, kptsmap kmap) error {
 func convertToHiragana(kana string) string {
 	prevKana := ""
 	hiragana := ""
-	for _, kn := range []rune(kana) {
+	for _, kn := range kana {
 		thisKana := string(kn)
 		if katakanaExp.MatchString(thisKana) {
 			if thisKana == "ー" {
@@ -205,7 +205,7 @@ func convertToHiragana(kana string) string {
 	return hiragana
 }
 
-func saveKanji(seq string, kanji string, kana string, endsInN bool, kptsmap kmap) error {
+func saveKanji(insertStmt *sql.Stmt, seq string, kanji string, kana string, endsInN bool, kptsmap kmap) error {
 	var pts int
 	if endsInN {
 		// Automatic zero for ending in 'ん'
