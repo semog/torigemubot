@@ -61,12 +61,6 @@ func getWordHistory(chatID int64) wordList {
 	return words
 }
 
-func getNumEntries(chatID int64) int {
-	numwords := 0
-	gamedb.SingleQuery(fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE chatid = %d", usedwordsTableName, chatID), &numwords)
-	return numwords
-}
-
 func clearWordHistory(chatID int64) {
 	// Clear out the word history.
 	gamedb.Exec(fmt.Sprintf("DELETE FROM %s WHERE chatid = %d", usedwordsTableName, chatID))

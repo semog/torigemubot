@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"fmt"
 	"regexp"
 	"strings"
@@ -14,7 +13,6 @@ const addCustomWordSavePoint = "AddCustomWord"
 const removeCustomWordSavePoint = "RemoveCustomWord"
 const kanaExp = `(\p{Katakana}|\p{Hiragana}|ー)([ゃャょョゅュ])?`
 
-var wordsdb *sql.DB
 var endKanaExp = regexp.MustCompile(fmt.Sprintf("%s$", kanaExp))
 var beginKanaExp = regexp.MustCompile(fmt.Sprintf("^%s", kanaExp))
 var endsInNExp = regexp.MustCompile(`(ん|ン)$`)
@@ -39,7 +37,7 @@ func getWordPts(chatID int64, theWord string, lastEntry *wordEntry) (int, string
 }
 
 func lookupKana(chatID int64, theWord string) (string, int) {
-	found, kana, pts := lookupStandardKana(chatID, theWord)
+	found, kana, pts := lookupStandardKana(theWord)
 	if !found || pts == 0 {
 		var customkana string
 		found, customkana, pts = lookupCustomKana(chatID, theWord)
@@ -51,7 +49,7 @@ func lookupKana(chatID int64, theWord string) (string, int) {
 	return kana, pts
 }
 
-func lookupStandardKana(chatID int64, theWord string) (bool, string, int) {
+func lookupStandardKana(theWord string) (bool, string, int) {
 	var kana string
 	var pts int
 	found := nil == gamedb.SingleQuery(fmt.Sprintf("SELECT kana, points FROM %s WHERE kanji = '%s'", wordsTablename, theWord), &kana, &pts)
@@ -128,7 +126,7 @@ func getKanjiPoints(kanjiCharacter string) int {
 	return pts
 }
 
-func addCustomWord(chatID int64, userID int, kanji string, kana string) error {
+func addCustomWord(chatID int64, userID int64, kanji string, kana string) error {
 	wordpts := calcWordPoints(kanji)
 	// Replace any existing custom word with the updated version of it.
 	return gamedb.ExecWithSavePoint(addCustomWordSavePoint, func() error {
@@ -156,9 +154,9 @@ func removeCustomWord(chatID int64, kanji string) error {
 	})
 }
 
-func customWordExists(chatID int64, kanji string) (bool, int) {
+func customWordExists(chatID int64, kanji string) (bool, int64) {
 	// Get userID that submitted the custom word.
-	var userID int
+	var userID int64
 	err := gamedb.SingleQuery(fmt.Sprintf("SELECT userid from %s where chatid = %d AND kanji = '%s'", customwordsTablename, chatID, kanji), &userID)
 	return err == nil, userID
 }

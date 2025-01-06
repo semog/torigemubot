@@ -4,7 +4,7 @@ import (
 	"flag"
 	"log"
 
-	tg "github.com/semog/go-bot-api/v4"
+	tg "github.com/semog/go-bot-api/v5"
 	"k8s.io/klog"
 )
 

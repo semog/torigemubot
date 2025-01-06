@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	tg "github.com/semog/go-bot-api/v4"
+	tg "github.com/semog/go-bot-api/v5"
 	"k8s.io/klog"
 )
 
@@ -39,7 +39,7 @@ const newGamePrompt = "始める新しい単語を入力して下さい。"
 // Track players in each game
 type playerEntry struct {
 	chatid    int64
-	userid    int
+	userid    int64
 	firstname string
 	lastname  string
 	username  string
@@ -52,7 +52,7 @@ type playerList []*playerEntry
 // Track the words used for each game.
 type wordEntry struct {
 	chatid int64
-	userid int
+	userid int64
 	word   string
 	points int
 }
@@ -114,7 +114,7 @@ func doShowScores(bot *tg.BotAPI, chatID int64) {
 		scores += fmt.Sprintf("\n%s 【%d得点】「%d言葉」", formatPlayerName(player), player.score, player.numWords)
 	}
 	msg := tg.NewMessage(chatID, scores)
-	msg.ParseMode = tg.ParseModeMarkdown
+	msg.ParseMode = tg.ModeMarkdown
 	bot.Send(msg)
 }
 
@@ -125,7 +125,7 @@ func doShowHistory(bot *tg.BotAPI, chatID int64) {
 		wordHistory += "\n" + getWordEntryDisplay(chatID, entry, true)
 	}
 	msg := tg.NewMessage(chatID, wordHistory)
-	msg.ParseMode = tg.ParseModeMarkdown
+	msg.ParseMode = tg.ModeMarkdown
 	bot.Send(msg)
 }
 
@@ -142,7 +142,7 @@ func doWordEntry(bot *tg.BotAPI, msg *tg.Message) {
 			doShowCurrentWord(bot, msg, false)
 			return
 		}
-		if !respondingToCurrentWord(bot, msg, lastentry) {
+		if !respondingToCurrentWord(msg, lastentry) {
 			sendReplyMsg(bot, msg, fmt.Sprintf("ヽ(^o^)丿\n%s様は遅いです。\n現在の言葉は：", formatPlayerName(player)))
 			doShowCurrentWord(bot, msg, true)
 			return
@@ -226,7 +226,7 @@ func doAddWord(bot *tg.BotAPI, msg *tg.Message) {
 		sendReplyMsg(bot, msg, fmt.Sprintf("❌誤りです。無効言葉: %s「%s」。言葉はんを終わることができない。", kanji, kana))
 		return
 	}
-	wordExists, _, _ := lookupStandardKana(msg.Chat.ID, kanji)
+	wordExists, _, _ := lookupStandardKana(kanji)
 	if wordExists {
 		sendReplyMsg(bot, msg, fmt.Sprintf("❌言葉は既に存在します：　%s「%s」。", kanji, kana))
 		return
@@ -361,7 +361,7 @@ func formatPlayerName(player *playerEntry) string {
 	return player.nickname
 }
 
-func respondingToCurrentWord(bot *tg.BotAPI, msg *tg.Message, lastentry *wordEntry) bool {
+func respondingToCurrentWord(msg *tg.Message, lastentry *wordEntry) bool {
 	if msg.ReplyToMessage == nil {
 		// Must have a reply to message.
 		return false

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	tg "github.com/semog/go-bot-api/v4"
+	tg "github.com/semog/go-bot-api/v5"
 )
 
 const playersTableName = "players"
@@ -36,7 +36,7 @@ func getPlayer(chatID int64, user *tg.User) *playerEntry {
 	return player
 }
 
-func getPlayerByID(chatID int64, userid int) (*playerEntry, error) {
+func getPlayerByID(chatID int64, userid int64) (*playerEntry, error) {
 	player := &playerEntry{
 		chatid: chatID,
 		userid: userid,
@@ -72,12 +72,12 @@ func savePlayer(player *playerEntry) error {
 		player.firstname, player.lastname, player.username, player.nickname, player.score, player.numWords, player.chatid, player.userid)
 }
 
-func updatePlayerScore(chatID int64, userid int, scoreUpdate int) error {
+func updatePlayerScore(chatID int64, userid int64, scoreUpdate int) error {
 	return gamedb.Exec(fmt.Sprintf("UPDATE %s SET score = (SELECT score+%d FROM %s WHERE chatid = %d AND userid = %d) WHERE chatid = %d AND userid = %d",
 		playersTableName, scoreUpdate, playersTableName, chatID, userid, chatID, userid))
 }
 
-func updatePlayerWords(chatID int64, userid int, wordsUpdate int) error {
+func updatePlayerWords(chatID int64, userid int64, wordsUpdate int) error {
 	return gamedb.Exec(fmt.Sprintf("UPDATE %s SET numwords = (SELECT numwords+%d FROM %s WHERE chatid = %d AND userid = %d) WHERE chatid = %d AND userid = %d",
 		playersTableName, wordsUpdate, playersTableName, chatID, userid, chatID, userid))
 }
