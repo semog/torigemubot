@@ -3,6 +3,11 @@ DATAFOLDER=/usr/local/share/appdata/torigemubot
 APPFOLDER=/usr/local/lib/torigemubot
 SYSTEMDFOLDER=/etc/systemd/system
 
+if [ ! -e "torigemubot" ]; then
+	echo "torigemubot binary not found. Please build it first."
+	exit 1
+fi
+
 # If the service is being installed for the first time, then a bot
 # token must be provided. If the service is being reinstalled, then
 # the token is optional.
