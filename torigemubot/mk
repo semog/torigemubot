@@ -1,0 +1,4 @@
+#!/bin/bash
+rm -f ./torigemubot
+echo Building torigemubot...
+go build -tags netgo -ldflags '-s'

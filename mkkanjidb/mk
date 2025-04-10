@@ -1,6 +1,6 @@
 #!/bin/bash
 rm -f ./mkkanjidb
 echo Building mkkanjidb tool...
-go build
+go build -tags netgo -ldflags '-s'
 echo Running mkkanjidb...
 ./mkkanjidb
